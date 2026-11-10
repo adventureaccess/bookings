@@ -1,6 +1,6 @@
 # Milestone 1 plan: Skeleton
 
-Status: waiting for Will's approval. Nothing below has been built.
+Status: built on `milestone-1-skeleton`. Waiting on the GitHub repo, CI run and Vercel preview. See milestone-1-pr.md.
 
 Done when: CI passes on the PR and an empty preview deploys on Vercel.
 

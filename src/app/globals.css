@@ -1,0 +1,41 @@
+@import "tailwindcss";
+
+/*
+ * Palette and type from the website's trip pages
+ * (src/components/trip/TripPage.astro), so a traveler moving from a trip
+ * page to this app sees the same thing.
+ */
+@theme inline {
+  --color-orange: #e8631a;
+  --color-orange-light: #f2874a;
+  --color-dark: #1a1612;
+  --color-charcoal: #2c2420;
+  --color-warm-mid: #6b5b4e;
+  --color-warm-light: #c4a882;
+  --color-cream: #f7f2eb;
+  --color-cream-dark: #ede5d8;
+  --color-white: #fdfaf6;
+
+  --font-serif: var(--font-cormorant), Georgia, serif;
+  --font-sans: var(--font-jost), system-ui, sans-serif;
+}
+
+body {
+  background: var(--color-cream);
+  color: var(--color-charcoal);
+  font-family: var(--font-sans);
+  font-weight: 300;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  color: var(--color-dark);
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-orange);
+  outline-offset: 2px;
+}
