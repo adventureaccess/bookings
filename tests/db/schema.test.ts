@@ -73,6 +73,15 @@ describe("schema", () => {
     expect(rows.map((r) => r.relname)).toEqual([]);
   });
 
+  it("keeps security definer functions out of the API-exposed public schema", async () => {
+    const { rows } = await db.query<{ proname: string }>(
+      `select p.proname from pg_proc p
+       join pg_namespace n on n.oid = p.pronamespace
+       where n.nspname = 'public' and p.prosecdef`,
+    );
+    expect(rows.map((r) => r.proname)).toEqual([]);
+  });
+
   it("gives every table id, created_at and updated_at", async () => {
     const { rows } = await db.query<{ table_name: string; n: number }>(
       `select table_name, count(*)::int as n from information_schema.columns

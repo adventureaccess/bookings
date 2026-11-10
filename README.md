@@ -37,7 +37,9 @@ npx supabase db push --dry-run
 npx supabase db push
 ```
 
-`--dry-run` lists what would be applied. Read it before the real push, and check the project ref is the dev project. To add a migration, create the next numbered file (`0006_...sql`); do not edit one that has been pushed.
+`--dry-run` lists what would be applied. Read it before the real push, and check the project ref is the dev project. To add a migration, run `npx supabase migration new <name>` and fill in the file it creates; do not edit one that has been applied.
+
+The dev project is "Bookings" (ref `pvfnlahywytptizpgkwo`). The six migrations in this folder are already applied there, and the filenames match the versions recorded in the database, so `db push` only sends new ones.
 
 ## Checks
 
