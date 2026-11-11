@@ -18,9 +18,8 @@ jobs:
     timeout-minutes: 15
     env:
       # Placeholders so the build's environment check passes. Not real keys.
-      NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder
-      SUPABASE_SERVICE_ROLE_KEY: placeholder
+      SUPABASE_URL: https://placeholder.supabase.co
+      SUPABASE_ANON_KEY: placeholder
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -28,7 +27,7 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       - run: npm ci
-      - name: Public env names
+      - name: No browser-exposed env names
         run: npm run check:env
       - name: Typecheck
         run: npm run typecheck

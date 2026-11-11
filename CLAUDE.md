@@ -13,15 +13,15 @@ A separate booking app that takes a traveler from a trip page to a paid deposit,
 
 | Piece | Choice | Notes |
 |---|---|---|
-| App | Next.js (App Router), TypeScript strict, Tailwind | Server Actions and Route Handlers; no client-side secrets. Brief says Next.js 15; pin the current stable major at scaffold time and note it in the PR **(review)** |
-| Hosting | Netlify, `book.adventure-access.com` | Its own Netlify site, separate from the marketing site, same team. Deploy Preview per PR; production from `main` only. Next.js runs on Netlify's Next.js runtime (auto-installed, not pinned). Switched from Vercel on Nov 11, 2026 |
+| App | Astro (server output), TypeScript strict, Tailwind | Astro Actions for forms, endpoints in `src/pages/api` for webhooks and cron, middleware for the staff gate. Pages are plain HTML with no client framework; add an island only where a screen needs it. No client-side secrets. Switched from Next.js on Nov 11, 2026, to match the website and run natively on Netlify |
+| Hosting | Netlify, `book.adventure-access.com` | Its own Netlify site, separate from the marketing site, same team. Deploy Preview per PR; production from `main` only. Server routes run as Netlify Functions through `@astrojs/netlify`. Switched from Vercel on Nov 11, 2026 |
 | Database | Supabase Postgres | Migrations in `supabase/migrations`; row-level security on every table |
 | Staff login | Supabase Auth, Google sign-in, `@adventure-access.com` only | `staff` allowlist table with roles |
 | Payments | Stripe Checkout (hosted), webhooks | The webhook is the only thing that marks money as paid |
 | CRM | HubSpot private app token, CRM v3 API | Contacts, deals, associations |
 | Email | Resend (default) | Transactional only; marketing stays in HubSpot |
 | Jobs | Netlify Scheduled Functions hitting protected routes | Hold cleanup and the `sync_jobs` worker **(review)**. Functions live in `netlify/functions` and call the app's routes with the shared secret header |
-| Validation | Zod on every input | Shared schemas for forms and API |
+| Validation | Zod on every input | Shared schemas for forms and API. Import `z` from `astro/zod` so Actions and schemas share one copy |
 | Tests | Vitest for logic, Playwright for the booking flow | Stripe test mode, Stripe CLI for webhooks |
 
 ## How a booking moves
@@ -70,7 +70,7 @@ Seats available = max_travelers − confirmed travelers − unexpired holds. Che
 ## Security and privacy (requirements)
 
 - No card data touches our servers. Stripe Checkout only; no Elements in v1.
-- Secrets live in Netlify environment variables (set in the UI, never in `netlify.toml`), server-only, marked as secret values. The three `NEXT_PUBLIC_` names are not marked secret, because Netlify's secret scanning fails a build when a secret value appears in the browser bundle. Nothing secret is prefixed `NEXT_PUBLIC_`. `.env.example` has names only.
+- Secrets live in Netlify environment variables (set in the UI, never in `netlify.toml`), server-only, marked as secret values. Every variable is declared in the `env.schema` in `astro.config.ts` and read through `astro:env/server`. No variable uses Astro's browser-exposed `PUBLIC_` prefix; CI fails if one appears. `.env.example` has names only.
 - RLS on every table. Public routes use server code with narrow queries. The service role is used only in the webhook, cron routes, the booking transaction and admin actions after a role check.
 - Admin requires Google sign-in with a verified `@adventure-access.com` email present in `staff`. Check the role on the server for every admin action.
 - Booking pages are addressed by reference plus a signed token, never sequential IDs. They show no other traveler's email or phone.
@@ -99,7 +99,7 @@ Match the trip pages (not the rest of the site, which uses Fraunces): Cormorant 
 
 One branch and PR per milestone, each with a preview deploy. Stop after each one for Will's review.
 
-1. **Skeleton.** Repo, Next.js, Tailwind with fonts and colors, Supabase project, migrations for all tables, RLS, `.env.example`, CI (typecheck, lint, test, audit). Done when CI passes and an empty preview deploys.
+1. **Skeleton.** Repo, Astro, Tailwind with fonts and colors, Supabase project, migrations for all tables, RLS, `.env.example`, CI (typecheck, lint, test, audit). Done when CI passes and an empty preview deploys.
 2. **Staff admin and departures.** Google sign-in limited to staff, trip sync, departure CRUD, policy versions. Done when Will can sign in, create a Ladakh Multisport departure, and a non-staff Google account is refused.
 3. **Booking form and holds.** Departure list, form with custom questions, policy acceptance, pending booking plus hold, capacity checks. Done when two concurrent bookings for the last seat produce exactly one hold (proved by a database-level test, with Playwright covering the form **(review)**).
 4. **Stripe deposit.** Checkout session, webhook with signature check and idempotency, success and canceled pages, hold cleanup cron. Done when a test-mode booking reaches `deposit_paid`, replaying the webhook changes nothing, and a tampered amount is impossible.

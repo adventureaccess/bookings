@@ -1,0 +1,38 @@
+---
+// Fonts are bundled with the app and served from our own origin, so the
+// Content-Security-Policy never needs to allow Google Fonts.
+import "@fontsource-variable/cormorant-garamond";
+import "@fontsource-variable/cormorant-garamond/wght-italic.css";
+import "@fontsource-variable/jost";
+import "../styles/global.css";
+
+interface Props {
+  title?: string;
+  description?: string;
+}
+
+const {
+  title,
+  description = "Book a place on an Adventure Access trip.",
+} = Astro.props;
+const fullTitle = title
+  ? `${title} | Adventure Access`
+  : "Bookings | Adventure Access";
+---
+
+<!doctype html>
+<html lang="en-US" class="h-full antialiased">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#1A1612" />
+    <!-- Nothing here should be indexed until the pilot departure goes live. -->
+    <meta name="robots" content="noindex, nofollow" />
+    <meta name="description" content={description} />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <title>{fullTitle}</title>
+  </head>
+  <body class="flex min-h-full flex-col">
+    <slot />
+  </body>
+</html>

@@ -1,5 +1,7 @@
 # Milestone 1: Skeleton
 
+> Historical. Written on Nov 10, 2026, when the app was Next.js on Vercel. On Nov 11 it moved to Astro on Netlify; see README.md and CLAUDE.md for the current setup.
+
 Paste this as the pull request description for `milestone-1-skeleton`.
 
 ## What is here

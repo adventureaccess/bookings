@@ -1,5 +1,4 @@
 node_modules/
-.next/
 .netlify/
 .env
 .env.*
@@ -12,5 +11,5 @@ supabase/.branches/
 *.log
 .DS_Store
 *.tsbuildinfo
-next-env.d.ts
-out/
+.astro/
+dist/

@@ -1,5 +1,7 @@
 # Milestone 1 plan: Skeleton
 
+> Historical. Written on Nov 10, 2026, when the app was Next.js on Vercel. On Nov 11 it moved to Astro on Netlify; see README.md and CLAUDE.md for the current setup.
+
 Status: built on `milestone-1-skeleton`. Waiting on the GitHub repo, CI run and Vercel preview. See milestone-1-pr.md.
 
 Done when: CI passes on the PR and an empty preview deploys on Vercel.

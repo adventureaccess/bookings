@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "astro/zod";
 
 /**
  * Shared building blocks for form and API schemas. Every string has a length

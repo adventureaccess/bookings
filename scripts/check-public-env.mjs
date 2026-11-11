@@ -1,16 +1,20 @@
-// Fails if any NEXT_PUBLIC_ name looks like a secret, or if a public name
-// appears that is not on the short allowlist. Runs in CI.
+// Fails if any browser-exposed environment variable name appears in the repo.
+//
+// Astro sends variables prefixed PUBLIC_ to the browser. This app reads every
+// variable on the server, so the allowlist is empty: adding a PUBLIC_ name is
+// a deliberate decision that has to be made here, in review. Runs in CI.
 import { readdirSync, readFileSync } from "node:fs";
 import { extname, join } from "node:path";
 
-const ALLOWED = new Set([
-  "NEXT_PUBLIC_SUPABASE_URL",
-  "NEXT_PUBLIC_SUPABASE_ANON_KEY",
-  "NEXT_PUBLIC_TURNSTILE_SITE_KEY",
+const ALLOWED = new Set([]);
+const PUBLIC_NAME = /\b(?:NEXT_)?PUBLIC_[A-Z0-9_]+/g;
+const FORBIDDEN = /SECRET|SERVICE|TOKEN|PRIVATE|PASSWORD|KEY/;
+const SCAN_EXTENSIONS = new Set([
+  ".astro", ".ts", ".tsx", ".js", ".mjs", ".json", ".yml", ".yaml", ".toml",
 ]);
-const FORBIDDEN = /SECRET|SERVICE|TOKEN|PRIVATE|PASSWORD/;
-const SCAN_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".mjs", ".json", ".yml", ".yaml"]);
-const SKIP_DIRS = new Set(["node_modules", ".next", ".git", ".netlify", "coverage"]);
+const SKIP_DIRS = new Set([
+  "node_modules", "dist", ".astro", ".git", ".netlify", "coverage",
+]);
 const SELF = join("scripts", "check-public-env.mjs");
 
 function* walk(dir) {
@@ -30,7 +34,8 @@ function* walk(dir) {
 
 const problems = [];
 for (const file of walk(".")) {
-  const names = readFileSync(file, "utf8").match(/NEXT_PUBLIC_[A-Z0-9_]+/g) ?? [];
+  // Never print values: only names are reported.
+  const names = readFileSync(file, "utf8").match(PUBLIC_NAME) ?? [];
   for (const name of new Set(names)) {
     if (FORBIDDEN.test(name)) {
       problems.push(`${file}: ${name} looks like a secret and must not be public`);
@@ -44,4 +49,4 @@ if (problems.length > 0) {
   console.error(problems.join("\n"));
   process.exit(1);
 }
-console.log("Public environment names are clean.");
+console.log("No browser-exposed environment names found.");
