@@ -17,7 +17,7 @@ const requiredNow = {
 };
 
 const comingLater = {
-  // Falls back to the Vercel deployment URL, then localhost. See siteUrl().
+  // Falls back to the URL Netlify gives the deploy, then localhost. See siteUrl().
   SITE_URL: z.url().max(2000).optional(),
   // Milestone 3
   TOKEN_SIGNING_SECRET: value.optional(),
@@ -56,8 +56,16 @@ export function parseEnv(source: Record<string, string | undefined>): Env {
   return result.data;
 }
 
+/**
+ * The public base URL. Netlify only provides its variables during the build,
+ * so next.config.ts resolves this once and bakes it in as SITE_URL.
+ */
 export function siteUrl(source: Record<string, string | undefined>): string {
   if (source.SITE_URL) return source.SITE_URL.replace(/\/$/, "");
-  if (source.VERCEL_URL) return `https://${source.VERCEL_URL}`;
+  // Netlify build variables. URL is the site's main address; DEPLOY_PRIME_URL
+  // is the address of this Deploy Preview or branch deploy.
+  const netlifyUrl =
+    source.CONTEXT === "production" ? source.URL : source.DEPLOY_PRIME_URL;
+  if (netlifyUrl) return netlifyUrl.replace(/\/$/, "");
   return "http://localhost:3000";
 }

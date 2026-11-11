@@ -14,13 +14,13 @@ A separate booking app that takes a traveler from a trip page to a paid deposit,
 | Piece | Choice | Notes |
 |---|---|---|
 | App | Next.js (App Router), TypeScript strict, Tailwind | Server Actions and Route Handlers; no client-side secrets. Brief says Next.js 15; pin the current stable major at scaffold time and note it in the PR **(review)** |
-| Hosting | Vercel, `book.adventure-access.com` | Preview deploy per PR; production from `main` only |
+| Hosting | Netlify, `book.adventure-access.com` | Its own Netlify site, separate from the marketing site, same team. Deploy Preview per PR; production from `main` only. Next.js runs on Netlify's Next.js runtime (auto-installed, not pinned). Switched from Vercel on Nov 11, 2026 |
 | Database | Supabase Postgres | Migrations in `supabase/migrations`; row-level security on every table |
 | Staff login | Supabase Auth, Google sign-in, `@adventure-access.com` only | `staff` allowlist table with roles |
 | Payments | Stripe Checkout (hosted), webhooks | The webhook is the only thing that marks money as paid |
 | CRM | HubSpot private app token, CRM v3 API | Contacts, deals, associations |
 | Email | Resend (default) | Transactional only; marketing stays in HubSpot |
-| Jobs | Vercel Cron hitting protected routes | Hold cleanup and the `sync_jobs` worker **(review)** |
+| Jobs | Netlify Scheduled Functions hitting protected routes | Hold cleanup and the `sync_jobs` worker **(review)**. Functions live in `netlify/functions` and call the app's routes with the shared secret header |
 | Validation | Zod on every input | Shared schemas for forms and API |
 | Tests | Vitest for logic, Playwright for the booking flow | Stripe test mode, Stripe CLI for webhooks |
 
@@ -70,7 +70,7 @@ Seats available = max_travelers − confirmed travelers − unexpired holds. Che
 ## Security and privacy (requirements)
 
 - No card data touches our servers. Stripe Checkout only; no Elements in v1.
-- Secrets live in Vercel environment variables, server-only. Nothing secret is prefixed `NEXT_PUBLIC_`. `.env.example` has names only.
+- Secrets live in Netlify environment variables (set in the UI, never in `netlify.toml`), server-only, marked as secret values. The three `NEXT_PUBLIC_` names are not marked secret, because Netlify's secret scanning fails a build when a secret value appears in the browser bundle. Nothing secret is prefixed `NEXT_PUBLIC_`. `.env.example` has names only.
 - RLS on every table. Public routes use server code with narrow queries. The service role is used only in the webhook, cron routes, the booking transaction and admin actions after a role check.
 - Admin requires Google sign-in with a verified `@adventure-access.com` email present in `staff`. Check the role on the server for every admin action.
 - Booking pages are addressed by reference plus a signed token, never sequential IDs. They show no other traveler's email or phone.
@@ -114,7 +114,7 @@ Not in v1 (design for, don't build): payment plans, reminders, AutoPay, late fee
 - Balance due date: 60 days before departure.
 - Policy version 1 text: start from the website's `/payment-terms-cancellation-policy` page; Will and Brian confirm.
 - Stripe fees: we absorb, no surcharge.
-- Hosting: Vercel. Email: Resend.
+- Hosting: Netlify (decided Nov 11, 2026). Email: Resend.
 - HubSpot pipeline: reuse an existing one or create "Trip Bookings". Ask first.
 - Pilot departure: a 2027 Ladakh Multisport date.
 - Custom questions per trip: Brian to list what YouLi asks today.
@@ -124,7 +124,7 @@ Not in v1 (design for, don't build): payment plans, reminders, AutoPay, late fee
 - **Trip feed.** The website has no `trips.json`, and all 14 trips are `visibility: internal`, `status: review`. Milestone 2 needs a filtered public feed (slug, title, destination, hero image only) and a rule for which trips appear.
 - **Policy acceptance.** Only the lead traveler sees the form. Default: the lead accepts on behalf of the party and the checkbox wording says so. Brian to confirm.
 - **Solo travelers.** Website prices are double occupancy and single supplements are out of v1. Default: charge the departure price and show "We will confirm rooming with you."
-- **Cron frequency.** Five-minute cron may need a paid Vercel plan. Confirm the plan before milestone 4.
+- **Cron frequency.** Confirm before milestone 4 that the Netlify plan allows a five-minute scheduled function and enough function invocations for it.
 
 ## Working rules
 

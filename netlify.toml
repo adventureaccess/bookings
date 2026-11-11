@@ -1,0 +1,15 @@
+"$schema" = "https://open-api.netlify.com/netlify.schema.json"
+
+# The bookings app is its own Netlify site, separate from the marketing site.
+# Netlify detects Next.js and runs it through its Next.js runtime; no adapter
+# is installed or pinned here.
+#
+# Environment variables are set in the Netlify UI, never in this file: values
+# here are committed to git and are not available to server code at runtime.
+
+[build]
+  command = "npm run build"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "22"

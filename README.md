@@ -41,6 +41,18 @@ npx supabase db push
 
 The dev project is "Bookings" (ref `pvfnlahywytptizpgkwo`). The six migrations in this folder are already applied there, and the filenames match the versions recorded in the database, so `db push` only sends new ones.
 
+## Hosting on Netlify
+
+The app is its own Netlify site, separate from the marketing site but in the same team. Build settings come from `netlify.toml`; Netlify detects Next.js and needs no adapter in this repo.
+
+One-time setup in the Netlify dashboard:
+
+1. Add new project, Import an existing project, GitHub, `adventureaccess/bookings`. Leave the build settings as detected.
+2. Before the first deploy, add the environment variables from `.env.example` (Project configuration, Environment variables). Only the three Supabase names are needed today.
+3. Tick "Contains secret values" for `SUPABASE_SERVICE_ROLE_KEY` and every later secret. Do **not** tick it for the three `NEXT_PUBLIC_` names: they are meant to reach the browser, and Netlify's secret scanning fails a build when a secret value shows up in the bundle.
+
+Every pull request gets a Deploy Preview; production deploys from `main`. Changing an environment variable needs a new deploy to take effect.
+
 ## Checks
 
 ```powershell

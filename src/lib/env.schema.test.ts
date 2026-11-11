@@ -40,8 +40,27 @@ describe("siteUrl", () => {
     );
   });
 
-  it("falls back to the Vercel URL, then localhost", () => {
-    expect(siteUrl({ VERCEL_URL: "x.vercel.app" })).toBe("https://x.vercel.app");
+  it("uses the main site URL on a Netlify production deploy", () => {
+    expect(
+      siteUrl({
+        CONTEXT: "production",
+        URL: "https://book.adventure-access.com",
+        DEPLOY_PRIME_URL: "https://main--aa-bookings.netlify.app",
+      }),
+    ).toBe("https://book.adventure-access.com");
+  });
+
+  it("uses the deploy URL on a Netlify Deploy Preview", () => {
+    expect(
+      siteUrl({
+        CONTEXT: "deploy-preview",
+        URL: "https://book.adventure-access.com",
+        DEPLOY_PRIME_URL: "https://deploy-preview-7--aa-bookings.netlify.app",
+      }),
+    ).toBe("https://deploy-preview-7--aa-bookings.netlify.app");
+  });
+
+  it("falls back to localhost", () => {
     expect(siteUrl({})).toBe("http://localhost:3000");
   });
 });

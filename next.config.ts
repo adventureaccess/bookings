@@ -1,5 +1,5 @@
 import type { NextConfig } from "next";
-import { parseEnv } from "./src/lib/env.schema";
+import { parseEnv, siteUrl } from "./src/lib/env.schema";
 
 // Fail the build early if a required environment variable is missing.
 parseEnv(process.env);
@@ -20,6 +20,8 @@ const nextConfig: NextConfig = {
   cacheComponents: true,
   partialPrefetching: true,
   poweredByHeader: false,
+  // Resolved at build time, where Netlify's deploy variables exist.
+  env: { SITE_URL: siteUrl(process.env) },
   turbopack: {
     rules: {
       "*.css": {

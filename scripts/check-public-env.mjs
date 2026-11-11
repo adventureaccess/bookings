@@ -10,7 +10,7 @@ const ALLOWED = new Set([
 ]);
 const FORBIDDEN = /SECRET|SERVICE|TOKEN|PRIVATE|PASSWORD/;
 const SCAN_EXTENSIONS = new Set([".ts", ".tsx", ".js", ".mjs", ".json", ".yml", ".yaml"]);
-const SKIP_DIRS = new Set(["node_modules", ".next", ".git", ".vercel", "coverage"]);
+const SKIP_DIRS = new Set(["node_modules", ".next", ".git", ".netlify", "coverage"]);
 const SELF = join("scripts", "check-public-env.mjs");
 
 function* walk(dir) {
