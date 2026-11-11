@@ -6,7 +6,11 @@ import Admin from "../../../layouts/Admin.astro";
 import { getDeparture, listPolicies, listTrips } from "../../../lib/admin/db";
 import { canWrite } from "../../../lib/auth/staff";
 import { formatDateRange } from "../../../lib/dates";
-import { questionsToText, type DepartureFormValues } from "../../../lib/departures/form";
+import {
+  questionsToText,
+  scheduleToValues,
+  type DepartureFormValues,
+} from "../../../lib/departures/form";
 import { centsToInputValue } from "../../../lib/money";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -41,6 +45,7 @@ const current: DepartureFormValues = {
   visibility: departure.visibility,
   policy_version_id: departure.policy_version_id ?? "",
   custom_questions: questionsToText(departure.custom_questions),
+  ...scheduleToValues(departure.payment_schedule),
 };
 
 // Where travelers will book. The booking page itself arrives in milestone 3.

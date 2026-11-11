@@ -3,7 +3,9 @@ import {
   newPrivateToken,
   parseCustomQuestions,
   parseDepartureForm,
+  parsePaymentSchedule,
   questionsToText,
+  scheduleToValues,
 } from "./form";
 
 const TRIP = "3f2a1b4c-5d6e-4f70-8a9b-0c1d2e3f4a5b";
@@ -53,6 +55,7 @@ describe("parseDepartureForm", () => {
         visibility: "public",
         policy_version_id: null,
         custom_questions: [],
+        payment_schedule: [],
       },
     });
   });
@@ -132,6 +135,88 @@ describe("custom questions", () => {
     const questions = parseCustomQuestions("One?\nTwo?");
     expect(questionsToText(questions)).toBe("One?\nTwo?");
     expect(questionsToText(null)).toBe("");
+  });
+});
+
+describe("scheduled payments", () => {
+  const scheduleOf = (overrides: Record<string, string>) => {
+    const result = parseDepartureForm(form(overrides));
+    if (!result.ok) throw new Error(JSON.stringify(result.errors));
+    return result.data.payment_schedule;
+  };
+
+  it("stores filled rows in date order, in cents, and skips blank rows", () => {
+    expect(
+      scheduleOf({
+        payment_1_label: "Third payment",
+        payment_1_due: "2027-04-01",
+        payment_1_amount: "1,000.50",
+        payment_3_label: "Second payment",
+        payment_3_due: "2027-02-01",
+        payment_3_amount: "1500",
+      }),
+    ).toEqual([
+      { id: "p1", label: "Second payment", due_date: "2027-02-01", amount_cents: 150000 },
+      { id: "p2", label: "Third payment", due_date: "2027-04-01", amount_cents: 100050 },
+    ]);
+  });
+
+  it("names a payment that was left unnamed", () => {
+    const [payment] = scheduleOf({ payment_1_due: "2027-02-01", payment_1_amount: "1500" });
+    expect(payment?.label).toBe("Scheduled payment");
+  });
+
+  it("needs both a due date and an amount once a row is started", () => {
+    expect(errorsOf({ payment_2_label: "Second payment" }).payment_schedule).toMatch(
+      /Payment 2 needs a due date/,
+    );
+    expect(errorsOf({ payment_1_due: "2027-02-01" }).payment_schedule).toMatch(/amount/);
+    expect(
+      errorsOf({ payment_1_due: "2027-02-01", payment_1_amount: "0" }).payment_schedule,
+    ).toMatch(/amount/);
+    expect(
+      errorsOf({ payment_1_due: "2027-02-30", payment_1_amount: "100" }).payment_schedule,
+    ).toMatch(/due date/);
+  });
+
+  it("requires every payment to fall before the final balance date", () => {
+    // The default final balance date for this form is 2027-05-11.
+    expect(
+      errorsOf({ payment_1_due: "2027-05-11", payment_1_amount: "100" }).payment_schedule,
+    ).toMatch(/before the final balance/);
+    expect(scheduleOf({ payment_1_due: "2027-05-10", payment_1_amount: "100" })).toHaveLength(1);
+  });
+
+  it("refuses a schedule that adds up to more than the price", () => {
+    // Price 4,950 and deposit 750 leave 4,200.
+    expect(
+      errorsOf({
+        payment_1_due: "2027-02-01",
+        payment_1_amount: "4000",
+        payment_2_due: "2027-03-01",
+        payment_2_amount: "200.01",
+      }).payment_schedule,
+    ).toMatch(/more than the price/);
+    expect(scheduleOf({ payment_1_due: "2027-02-01", payment_1_amount: "4200" })).toHaveLength(1);
+  });
+
+  it("keeps what was typed in the rows when the form has errors", () => {
+    const result = parseDepartureForm(form({ price: "abc", payment_1_amount: "1500" }));
+    expect(!result.ok && result.values.payment_1_amount).toBe("1500");
+  });
+
+  it("round-trips a stored schedule back into the form rows", () => {
+    const values = scheduleToValues([
+      { id: "p1", label: "Second payment", due_date: "2027-02-01", amount_cents: 150000 },
+    ]);
+    expect(values.payment_1_label).toBe("Second payment");
+    expect(values.payment_1_due).toBe("2027-02-01");
+    expect(parsePaymentSchedule(values, { priceCents: null, depositCents: null, balanceDue: null }))
+      .toEqual([
+        { id: "p1", label: "Second payment", due_date: "2027-02-01", amount_cents: 150000 },
+      ]);
+    expect(values.payment_2_due).toBe("");
+    expect(scheduleToValues(null).payment_1_amount).toBe("");
   });
 });
 

@@ -39,7 +39,7 @@ Trip content is not copied. The app reads slug, title, destination and hero imag
 Money is integer cents with a `currency` column (always `usd`). Every table has `id uuid`, `created_at`, `updated_at`.
 
 - `trips`: slug (matches the website file), title, destination, hero_image_url (absolute), active
-- `departures`: trip_id, start_date, end_date, price_cents, deposit_cents, balance_due_date, min_travelers, max_travelers, status (open, full, closed, canceled), visibility (public, private), private_token, policy_version_id, custom_questions jsonb
+- `departures`: trip_id, start_date, end_date, price_cents, deposit_cents, balance_due_date, min_travelers, max_travelers, status (open, full, closed, canceled), visibility (public, private), private_token, policy_version_id, custom_questions jsonb, payment_schedule jsonb (scheduled payments per person between the deposit and the final balance: label, due_date, amount_cents; added Nov 11, 2026)
 - `bookings`: departure_id, reference (e.g. AA-7K3Q), access_token_hash, status (pending, deposit_paid, paid_in_full, canceled, refunded), lead_traveler_id, traveler_count, total_cents, discount_cents, paid_cents, needs_attention, hubspot_deal_id, source
 - `travelers`: booking_id, first_name, last_name, email (required for the lead only **(review)**), phone, is_lead, answers jsonb, hubspot_contact_id
 - `seat_holds`: departure_id, booking_id, seats, expires_at
@@ -59,7 +59,8 @@ Seats available = max_travelers − confirmed travelers − unexpired holds. Che
 - The server decides every amount. The browser never sends a price.
 - The Stripe webhook is the only path that marks anything paid or refunded.
 - Deposit = `deposit_cents × travelers`, Checkout in payment mode, `customer_creation: always`, booking reference and IDs in metadata.
-- Balance = `total_cents − paid_cents`, due on `balance_due_date`. v1: staff send a Stripe payment link or invoice from the admin.
+- Milestone payments (Will, Nov 11, 2026): each departure may set its own schedule of payments between the deposit and the final balance, in `payment_schedule`. Amounts are fixed cents per person; each is due before `balance_due_date`; deposit plus scheduled payments never exceed the price. v1: staff send a Stripe payment link or invoice for each one from the admin. No automatic charges or reminders.
+- Final balance = `total_cents − paid_cents`, due on `balance_due_date`. v1: staff send a Stripe payment link or invoice from the admin.
 - Coupons are Stripe promotion codes. Read the discount from the completed session, never from the form. **(review, default)** The discount reduces `total_cents` (stored in `discount_cents`); `paid_cents` is what was actually charged.
 - Refunds: the admin calls the Stripe API with a reason and logs who and why. The `charge.refunded` webhook writes the `payments` row, so dashboard refunds are captured too **(review)**. Partial refunds allowed.
 - Webhooks: `checkout.session.completed`, `checkout.session.expired`, `payment_intent.payment_failed`, `charge.refunded`, `invoice.paid`. Verify the signature, store the event ID first, skip events already processed.
@@ -106,7 +107,7 @@ One branch and PR per milestone, each with a preview deploy. Stop after each one
 5. **HubSpot and email.** Sync queue and worker, contacts, deal, associations, emails, retry from admin. Done when a test booking appears as a deal with all travelers associated, and a forced HubSpot failure retries and then succeeds.
 6. **Admin finish and launch prep.** Booking detail, balance link, refunds, activity log, CSV export, security headers, Turnstile, rate limits, README and runbook. Done when the security checklist is ticked and Will approves going live on one pilot departure.
 
-Not in v1 (design for, don't build): payment plans, reminders, AutoPay, late fees, auto-cancel, traveler portal, document upload, waitlists, rooming lists, single supplements, affiliates, multi-currency.
+Not in v1 (design for, don't build): automatic collection of scheduled payments, reminders, AutoPay, late fees, auto-cancel, traveler portal, document upload, waitlists, rooming lists, single supplements, affiliates, multi-currency.
 
 ## Open decisions (build with the default, flag it in the PR, keep going)
 

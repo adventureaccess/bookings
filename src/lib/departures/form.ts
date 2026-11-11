@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { addDays, isIsoDate } from "../dates";
-import { parseDollarsToCents } from "../money";
+import { centsToInputValue, parseDollarsToCents } from "../money";
 
 /**
  * Turns the departure form into a row for the database, or a list of
@@ -27,6 +27,28 @@ export interface CustomQuestion {
   required: boolean;
 }
 
+/**
+ * A payment due between the deposit and the final balance. The amount is per
+ * person. The final balance (total minus paid) stays due on balance_due_date.
+ */
+export interface ScheduledPayment {
+  id: string;
+  label: string;
+  due_date: string;
+  amount_cents: number;
+}
+
+/** The admin form offers this many scheduled payments per departure. */
+export const SCHEDULE_ROWS = [1, 2, 3, 4] as const;
+type ScheduleRow = (typeof SCHEDULE_ROWS)[number];
+export type ScheduleField = `payment_${ScheduleRow}_${"label" | "due" | "amount"}`;
+const SCHEDULE_FIELDS = SCHEDULE_ROWS.flatMap((n) => [
+  `payment_${n}_label`,
+  `payment_${n}_due`,
+  `payment_${n}_amount`,
+]) as ScheduleField[];
+const MAX_PAYMENT_LABEL_LENGTH = 80;
+
 export interface DepartureInput {
   trip_id: string;
   start_date: string;
@@ -40,9 +62,10 @@ export interface DepartureInput {
   visibility: DepartureVisibility;
   policy_version_id: string | null;
   custom_questions: CustomQuestion[];
+  payment_schedule: ScheduledPayment[];
 }
 
-export const DEPARTURE_FIELDS = [
+const BASE_FIELDS = [
   "trip_id",
   "start_date",
   "end_date",
@@ -56,9 +79,12 @@ export const DEPARTURE_FIELDS = [
   "policy_version_id",
   "custom_questions",
 ] as const;
-export type DepartureField = (typeof DEPARTURE_FIELDS)[number];
+type BaseField = (typeof BASE_FIELDS)[number];
+export type DepartureField = BaseField | ScheduleField;
+export const DEPARTURE_FIELDS: readonly DepartureField[] = [...BASE_FIELDS, ...SCHEDULE_FIELDS];
 export type DepartureFormValues = Record<DepartureField, string>;
-export type DepartureFormErrors = Partial<Record<DepartureField, string>>;
+/** The scheduled payment rows share one message, under `payment_schedule`. */
+export type DepartureFormErrors = Partial<Record<BaseField | "payment_schedule", string>>;
 
 export type DepartureFormResult =
   | { ok: true; data: DepartureInput }
@@ -105,6 +131,62 @@ export function questionsToText(questions: unknown): string {
     .map((q) => (q && typeof q === "object" && "label" in q ? String(q.label) : ""))
     .filter((label) => label !== "")
     .join("\n");
+}
+
+/**
+ * Reads the scheduled payment rows. A row counts once anything is typed in
+ * it. Returns the payments in date order, or one message for the section.
+ * `limits` holds the already-parsed price, deposit and final balance date;
+ * a null skips the checks that depend on it.
+ */
+export function parsePaymentSchedule(
+  values: Pick<DepartureFormValues, ScheduleField>,
+  limits: { priceCents: number | null; depositCents: number | null; balanceDue: string | null },
+): ScheduledPayment[] | string {
+  const payments: Omit<ScheduledPayment, "id">[] = [];
+  for (const n of SCHEDULE_ROWS) {
+    const label = values[`payment_${n}_label`];
+    const due = values[`payment_${n}_due`];
+    const amountText = values[`payment_${n}_amount`];
+    if (label === "" && due === "" && amountText === "") continue;
+
+    if (!isIsoDate(due)) return `Payment ${n} needs a due date.`;
+    const amount = parseDollarsToCents(amountText);
+    if (amount === null || amount <= 0) {
+      return `Payment ${n} needs an amount in dollars, like 1500.`;
+    }
+    if (label.length > MAX_PAYMENT_LABEL_LENGTH) {
+      return `Keep the name of payment ${n} under ${MAX_PAYMENT_LABEL_LENGTH} characters.`;
+    }
+    if (limits.balanceDue !== null && due >= limits.balanceDue) {
+      return `Payment ${n} must be due before the final balance date.`;
+    }
+    payments.push({ label: label || "Scheduled payment", due_date: due, amount_cents: amount });
+  }
+
+  payments.sort((a, b) => a.due_date.localeCompare(b.due_date));
+  if (limits.priceCents !== null && limits.depositCents !== null) {
+    const scheduled = payments.reduce((sum, p) => sum + p.amount_cents, 0);
+    if (limits.depositCents + scheduled > limits.priceCents) {
+      return "The deposit plus the scheduled payments come to more than the price.";
+    }
+  }
+  return payments.map((payment, index) => ({ id: `p${index + 1}`, ...payment }));
+}
+
+/** A stored schedule as form values, one row per payment, the rest blank. */
+export function scheduleToValues(schedule: unknown): Record<ScheduleField, string> {
+  const rows = Array.isArray(schedule) ? schedule : [];
+  const values = {} as Record<ScheduleField, string>;
+  for (const n of SCHEDULE_ROWS) {
+    const row: unknown = rows[n - 1];
+    const item = row && typeof row === "object" ? (row as Partial<ScheduledPayment>) : {};
+    values[`payment_${n}_label`] = typeof item.label === "string" ? item.label : "";
+    values[`payment_${n}_due`] = typeof item.due_date === "string" ? item.due_date : "";
+    values[`payment_${n}_amount`] =
+      typeof item.amount_cents === "number" ? centsToInputValue(item.amount_cents) : "";
+  }
+  return values;
 }
 
 export function parseDepartureForm(form: FormData): DepartureFormResult {
@@ -160,6 +242,13 @@ export function parseDepartureForm(form: FormData): DepartureFormResult {
   const questions = parseCustomQuestions(values.custom_questions);
   if (typeof questions === "string") errors.custom_questions = questions;
 
+  const schedule = parsePaymentSchedule(values, {
+    priceCents: errors.price ? null : price,
+    depositCents: errors.deposit ? null : deposit,
+    balanceDue: errors.balance_due_date || errors.start_date ? null : balanceDue,
+  });
+  if (typeof schedule === "string") errors.payment_schedule = schedule;
+
   if (Object.keys(errors).length > 0) return { ok: false, errors, values };
 
   return {
@@ -177,6 +266,7 @@ export function parseDepartureForm(form: FormData): DepartureFormResult {
       visibility: visibility as DepartureVisibility,
       policy_version_id: values.policy_version_id || null,
       custom_questions: questions as CustomQuestion[],
+      payment_schedule: schedule as ScheduledPayment[],
     },
   };
 }

@@ -30,6 +30,7 @@ export interface Departure {
   private_token: string | null;
   policy_version_id: string | null;
   custom_questions: unknown;
+  payment_schedule: unknown;
   updated_at: string;
 }
 
