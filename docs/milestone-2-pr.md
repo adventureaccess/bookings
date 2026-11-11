@@ -28,9 +28,15 @@ Locally, against the dev database, using the local-only staff shortcut (see belo
 - Trip sync with no feed configured explains that instead of failing.
 - Typecheck, lint, 79 tests, build, build check and audit pass.
 
+With real Google sign-in, on Nov 11, 2026, locally with the shortcut removed:
+
+- Will signed in with his company Google account and reached the admin. Supabase shows one account, created through Google and matching his staff row.
+- A personal Gmail account was refused by Google itself ("Access blocked", error 403 org_internal), because the Google consent screen audience is Internal. It never reached the app.
+
 ## Not verified
 
-- **Real Google sign-in.** It needs the Google OAuth client and the Supabase provider settings, which only Will can create. Starting sign-in correctly redirects to Supabase's Google endpoint, but the round trip, and the refusal of a non-staff Google account, have not been exercised. This is the milestone's acceptance test and is still open.
+- **The app's own refusal in a real sign-in.** A company Google account that is not in the staff table gets past Google and must be refused by the app. That path is covered by unit and database tests, but has not been tried with a real second company account.
+- **Sign-in on the Deploy Preview.** Tested on localhost only so far.
 - **Trip sync against a real feed.** The website does not publish `trips.json` yet. The feed parsing and sync planning are unit-tested; the fetch has not run against a live URL.
 - The Deploy Preview for this PR will fail until `SUPABASE_SERVICE_ROLE_KEY` is set in Netlify.
 
