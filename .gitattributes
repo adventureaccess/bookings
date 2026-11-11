@@ -1,0 +1,3 @@
+# Always LF, on every machine. Netlify reads .nvmrc and other files as-is,
+# and a Windows line ending in them breaks the build.
+* text=auto eol=lf

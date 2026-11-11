@@ -1,6 +1,5 @@
 node_modules/
-.next/
-.vercel/
+.netlify/
 .env
 .env.*
 !.env.example
@@ -12,5 +11,5 @@ supabase/.branches/
 *.log
 .DS_Store
 *.tsbuildinfo
-next-env.d.ts
-out/
+.astro/
+dist/

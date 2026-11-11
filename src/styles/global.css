@@ -5,7 +5,7 @@
  * (src/components/trip/TripPage.astro), so a traveler moving from a trip
  * page to this app sees the same thing.
  */
-@theme inline {
+@theme {
   --color-orange: #e8631a;
   --color-orange-light: #f2874a;
   --color-dark: #1a1612;
@@ -16,8 +16,8 @@
   --color-cream-dark: #ede5d8;
   --color-white: #fdfaf6;
 
-  --font-serif: var(--font-cormorant), Georgia, serif;
-  --font-sans: var(--font-jost), system-ui, sans-serif;
+  --font-serif: "Cormorant Garamond Variable", Georgia, serif;
+  --font-sans: "Jost Variable", system-ui, sans-serif;
 }
 
 body {

@@ -1,0 +1,25 @@
+"$schema" = "https://open-api.netlify.com/netlify.schema.json"
+
+# The bookings app is its own Netlify site, separate from the marketing site.
+# The Astro Netlify adapter turns server routes into Netlify Functions.
+#
+# Environment variables are set in the Netlify UI, never in this file: values
+# here are committed to git and are not available to server code at runtime.
+
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+# Static files (CSS, fonts, images) do not pass through the app's middleware,
+# so the baseline security headers are repeated here. Server-rendered pages
+# get them from src/middleware.ts. Keep in step with src/lib/security-headers.ts.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Strict-Transport-Security = "max-age=63072000; includeSubDomains; preload"
+    X-Frame-Options = "DENY"
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
