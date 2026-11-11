@@ -56,7 +56,7 @@ export async function createDatabase(): Promise<PGlite> {
 type Caller =
   | { role: "anon" }
   | { role: "service_role" }
-  | { role: "authenticated"; email: string };
+  | { role: "authenticated"; email: string; provider?: string };
 
 /** Runs fn as the given API role, the way PostgREST would, then resets. */
 export async function as<T>(
@@ -66,7 +66,12 @@ export async function as<T>(
 ): Promise<T> {
   const claims =
     caller.role === "authenticated"
-      ? JSON.stringify({ role: "authenticated", email: caller.email })
+      ? JSON.stringify({
+          role: "authenticated",
+          email: caller.email,
+          // Set by Supabase from how the account was created. Google by default.
+          app_metadata: { provider: caller.provider ?? "google" },
+        })
       : JSON.stringify({ role: caller.role });
   await db.query("select set_config('request.jwt.claims', $1, false)", [claims]);
   await db.exec(`set role ${caller.role}`);

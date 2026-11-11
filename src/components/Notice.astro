@@ -1,0 +1,18 @@
+---
+interface Props {
+  kind?: "success" | "error" | "info";
+}
+const { kind = "info" } = Astro.props;
+const STYLE = {
+  success: "border-warm-light bg-white",
+  error: "border-orange bg-cream-dark",
+  info: "border-warm-light bg-cream-dark",
+} as const;
+---
+
+<p
+  role={kind === "error" ? "alert" : "status"}
+  class:list={["mb-6 border-l-2 px-4 py-3 text-sm text-charcoal", STYLE[kind]]}
+>
+  <slot />
+</p>

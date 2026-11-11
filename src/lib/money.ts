@@ -55,3 +55,26 @@ export function formatUsd(cents: number): string {
     ? wholeDollars.format(cents / 100)
     : withCents.format(cents / 100);
 }
+
+/**
+ * Reads a dollar amount typed into a form ("4,950", "$4950.00", "750.5") as
+ * cents. Works on the digits as text, so no floating-point rounding can
+ * creep in. Returns null for anything that is not a plain dollar amount.
+ */
+export function parseDollarsToCents(input: string): number | null {
+  const text = input.trim().replace(/^\$/, "").replace(/,/g, "");
+  const match = /^(\d{1,9})(?:\.(\d{1,2}))?$/.exec(text);
+  if (!match) return null;
+  const dollars = Number(match[1]);
+  const cents = Number((match[2] ?? "").padEnd(2, "0"));
+  const total = dollars * 100 + cents;
+  return isCents(total) ? total : null;
+}
+
+/** Cents as a plain form value: 495000 becomes "4950", 495050 becomes "4950.50". */
+export function centsToInputValue(cents: number): string {
+  assertCents(cents);
+  const dollars = Math.floor(cents / 100);
+  const rest = cents % 100;
+  return rest === 0 ? String(dollars) : `${dollars}.${String(rest).padStart(2, "0")}`;
+}

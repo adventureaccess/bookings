@@ -1,0 +1,90 @@
+---
+import { actions } from "astro:actions";
+import Notice from "../../../components/Notice.astro";
+import PolicyForm from "../../../components/PolicyForm.astro";
+import Admin from "../../../layouts/Admin.astro";
+import { getPolicy } from "../../../lib/admin/db";
+import { canWrite } from "../../../lib/auth/staff";
+import { formatDate } from "../../../lib/dates";
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const id = Astro.params.id ?? "";
+if (!UUID.test(id)) return new Response(null, { status: 404 });
+
+const saved = Astro.getActionResult(actions.savePolicy);
+if (saved?.data?.ok) return Astro.redirect("/admin/policies?done=saved");
+const published = Astro.getActionResult(actions.publishPolicy);
+if (published?.data?.ok) return Astro.redirect("/admin/policies?done=published");
+
+const policy = await getPolicy(id);
+if (!policy) return new Response(null, { status: 404 });
+
+const canEdit = canWrite(Astro.locals.staff);
+const isDraft = policy.published_at === null;
+const failed = saved?.data && !saved.data.ok ? saved.data : null;
+const publishMessage =
+  published?.error?.message ??
+  (published?.data && !published.data.ok ? published.data.message : null);
+---
+
+<Admin title={`Policy version ${policy.version}`}>
+  <p class="-mt-4 mb-8 text-warm-mid">
+    {
+      isDraft
+        ? "Draft. Travelers cannot see it yet."
+        : `Published ${formatDate(policy.published_at!.slice(0, 10))}. Locked.`
+    }
+  </p>
+
+  {saved?.error && <Notice kind="error">{saved.error.message}</Notice>}
+  {failed?.message && <Notice kind="error">{failed.message}</Notice>}
+  {
+    failed && !failed.message && (
+      <Notice kind="error">Some fields need attention. Nothing was saved.</Notice>
+    )
+  }
+  {publishMessage && <Notice kind="error">{publishMessage}</Notice>}
+
+  {
+    isDraft && canEdit ? (
+      <>
+        <PolicyForm
+          id={policy.id}
+          values={failed?.values ?? { title: policy.title, body_md: policy.body_md }}
+          errors={failed?.errors ?? {}}
+        />
+
+        <section class="mt-12 max-w-3xl border-t border-cream-dark pt-8">
+          <h2 class="text-2xl">Publish this version</h2>
+          <p class="mt-2 text-sm text-warm-mid">
+            Publishing locks the text permanently. It cannot be edited, unpublished or deleted
+            afterward. Save any changes above first: publishing uses the last saved text.
+          </p>
+          <details class="mt-4">
+            <summary class="cursor-pointer text-sm text-dark underline underline-offset-4">
+              The text is final and has been approved
+            </summary>
+            <form method="POST" action={actions.publishPolicy} class="mt-4">
+              <input type="hidden" name="id" value={policy.id} />
+              <button type="submit" class="cursor-pointer border border-orange px-6 py-2 text-sm font-medium uppercase tracking-[0.15em] text-orange transition-colors hover:bg-orange hover:text-white">
+                Publish version {policy.version}
+              </button>
+            </form>
+          </details>
+        </section>
+      </>
+    ) : (
+      <article class="max-w-3xl">
+        <h2 class="text-2xl">{policy.title}</h2>
+        <pre class="mt-4 whitespace-pre-wrap border border-cream-dark bg-white p-6 font-sans text-sm leading-relaxed text-charcoal">{policy.body_md}</pre>
+        {!isDraft && canEdit && (
+          <p class="mt-6 text-sm">
+            <a class="underline decoration-orange underline-offset-4" href="/admin/policies/new">
+              Create a new version from this text
+            </a>
+          </p>
+        )}
+      </article>
+    )
+  }
+</Admin>

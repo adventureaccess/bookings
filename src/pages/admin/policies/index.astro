@@ -1,0 +1,72 @@
+---
+import Notice from "../../../components/Notice.astro";
+import Admin from "../../../layouts/Admin.astro";
+import { listPolicies } from "../../../lib/admin/db";
+import { canWrite } from "../../../lib/auth/staff";
+import { formatDate } from "../../../lib/dates";
+
+const policies = await listPolicies();
+const canEdit = canWrite(Astro.locals.staff);
+const flash = Astro.url.searchParams.get("done");
+const FLASH: Record<string, string> = {
+  created: "Draft created.",
+  saved: "Draft saved.",
+  published: "Policy published. It can no longer be edited.",
+};
+---
+
+<Admin title="Policies">
+  {flash && FLASH[flash] && <Notice kind="success">{FLASH[flash]}</Notice>}
+
+  <p class="max-w-2xl text-sm text-warm-mid">
+    Travelers accept one exact version of the booking policy. A draft can be edited freely. Once
+    published, a version is locked for good, so there is always a record of the words each
+    traveler agreed to. To change the policy, create a new version.
+  </p>
+
+  {
+    canEdit && (
+      <a href="/admin/policies/new" class="mt-6 inline-block bg-dark px-6 py-2 text-sm font-medium uppercase tracking-[0.15em] text-white transition-colors hover:bg-orange">
+        New version
+      </a>
+    )
+  }
+
+  <div class="mt-8 overflow-x-auto">
+    <table class="w-full min-w-[32rem] text-left text-sm">
+      <thead class="border-b border-warm-light text-xs uppercase tracking-wider text-warm-mid">
+        <tr>
+          <th scope="col" class="py-2 pr-4 font-medium">Version</th>
+          <th scope="col" class="py-2 pr-4 font-medium">Title</th>
+          <th scope="col" class="py-2 font-medium">Status</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-cream-dark">
+        {
+          policies.map((policy) => (
+            <tr>
+              <td class="py-3 pr-4">{policy.version}</td>
+              <td class="py-3 pr-4">
+                <a class="text-dark underline decoration-orange underline-offset-4" href={`/admin/policies/${policy.id}`}>
+                  {policy.title}
+                </a>
+              </td>
+              <td class="py-3">
+                {policy.published_at
+                  ? `Published ${formatDate(policy.published_at.slice(0, 10))}`
+                  : "Draft"}
+              </td>
+            </tr>
+          ))
+        }
+        {
+          policies.length === 0 && (
+            <tr>
+              <td colspan="3" class="py-6 text-warm-mid">No policy versions yet.</td>
+            </tr>
+          )
+        }
+      </tbody>
+    </table>
+  </div>
+</Admin>

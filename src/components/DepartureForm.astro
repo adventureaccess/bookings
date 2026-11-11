@@ -1,0 +1,153 @@
+---
+import { actions } from "astro:actions";
+import type { PolicyVersion, Trip } from "../lib/db-types";
+import {
+  BALANCE_DUE_DAYS_BEFORE,
+  DEPARTURE_STATUSES,
+  type DepartureFormErrors,
+  type DepartureFormValues,
+} from "../lib/departures/form";
+import Field from "./Field.astro";
+
+interface Props {
+  id?: string;
+  values: DepartureFormValues;
+  errors: DepartureFormErrors;
+  trips: Trip[];
+  policies: PolicyVersion[];
+  canEdit: boolean;
+}
+
+const { id, values, errors, trips, policies, canEdit } = Astro.props;
+const input =
+  "w-full border border-warm-light bg-white px-3 py-2 text-charcoal disabled:bg-cream-dark disabled:text-warm-mid";
+const STATUS_LABEL = {
+  open: "Open: taking bookings",
+  full: "Full: shown, not bookable",
+  closed: "Closed: hidden from travelers",
+  canceled: "Canceled: hidden from travelers",
+} as const;
+const describe = (name: keyof DepartureFormErrors) =>
+  errors[name] ? `${name}-error` : undefined;
+---
+
+<form method="POST" action={actions.saveDeparture} class="max-w-2xl space-y-6" novalidate>
+  {id && <input type="hidden" name="id" value={id} />}
+
+  <Field name="trip_id" label="Trip" error={errors.trip_id}>
+    <select id="trip_id" name="trip_id" class={input} disabled={!canEdit} required aria-describedby={describe("trip_id")}>
+      <option value="">Choose a trip</option>
+      {
+        trips.map((trip) => (
+          <option value={trip.id} selected={trip.id === values.trip_id}>
+            {trip.title}
+            {trip.active ? "" : " (inactive)"}
+          </option>
+        ))
+      }
+    </select>
+  </Field>
+
+  <div class="grid gap-6 sm:grid-cols-2">
+    <Field name="start_date" label="Start date" error={errors.start_date}>
+      <input id="start_date" name="start_date" type="date" value={values.start_date} class={input} disabled={!canEdit} required aria-describedby={describe("start_date")} />
+    </Field>
+    <Field name="end_date" label="End date" error={errors.end_date}>
+      <input id="end_date" name="end_date" type="date" value={values.end_date} class={input} disabled={!canEdit} required aria-describedby={describe("end_date")} />
+    </Field>
+  </div>
+
+  <div class="grid gap-6 sm:grid-cols-2">
+    <Field name="price" label="Price per person (USD)" error={errors.price}>
+      <input id="price" name="price" type="text" inputmode="decimal" value={values.price} placeholder="4950" class={input} disabled={!canEdit} required aria-describedby={describe("price")} />
+    </Field>
+    <Field name="deposit" label="Deposit per person (USD)" error={errors.deposit}>
+      <input id="deposit" name="deposit" type="text" inputmode="decimal" value={values.deposit} placeholder="750" class={input} disabled={!canEdit} required aria-describedby={describe("deposit")} />
+    </Field>
+  </div>
+
+  <Field
+    name="balance_due_date"
+    label="Balance due date"
+    help={`Leave blank for ${BALANCE_DUE_DAYS_BEFORE} days before the start date.`}
+    error={errors.balance_due_date}
+  >
+    <input id="balance_due_date" name="balance_due_date" type="date" value={values.balance_due_date} class={`${input} sm:w-1/2`} disabled={!canEdit} aria-describedby={errors.balance_due_date ? "balance_due_date-error" : "balance_due_date-help"} />
+  </Field>
+
+  <div class="grid gap-6 sm:grid-cols-2">
+    <Field name="min_travelers" label="Minimum travelers" error={errors.min_travelers}>
+      <input id="min_travelers" name="min_travelers" type="number" min="1" max="100" step="1" value={values.min_travelers} class={input} disabled={!canEdit} required aria-describedby={describe("min_travelers")} />
+    </Field>
+    <Field name="max_travelers" label="Maximum travelers" help="The number of seats that can be sold." error={errors.max_travelers}>
+      <input id="max_travelers" name="max_travelers" type="number" min="1" max="100" step="1" value={values.max_travelers} class={input} disabled={!canEdit} required aria-describedby={errors.max_travelers ? "max_travelers-error" : "max_travelers-help"} />
+    </Field>
+  </div>
+
+  <div class="grid gap-6 sm:grid-cols-2">
+    <Field name="status" label="Status" error={errors.status}>
+      <select id="status" name="status" class={input} disabled={!canEdit} aria-describedby={describe("status")}>
+        {
+          DEPARTURE_STATUSES.map((status) => (
+            <option value={status} selected={status === values.status}>
+              {STATUS_LABEL[status]}
+            </option>
+          ))
+        }
+      </select>
+    </Field>
+    <Field
+      name="visibility"
+      label="Who can see it"
+      help="Private departures are reached only through their own link."
+      error={errors.visibility}
+    >
+      <select id="visibility" name="visibility" class={input} disabled={!canEdit} aria-describedby={errors.visibility ? "visibility-error" : "visibility-help"}>
+        <option value="public" selected={values.visibility === "public"}>Public</option>
+        <option value="private" selected={values.visibility === "private"}>Private link only</option>
+      </select>
+    </Field>
+  </div>
+
+  <Field
+    name="policy_version_id"
+    label="Booking policy"
+    help={policies.length === 0
+      ? "No policy is published yet. Publish one under Policies, then attach it here before taking bookings."
+      : "Travelers accept this version when they book."}
+    error={errors.policy_version_id}
+  >
+    <select id="policy_version_id" name="policy_version_id" class={input} disabled={!canEdit} aria-describedby={errors.policy_version_id ? "policy_version_id-error" : "policy_version_id-help"}>
+      <option value="">None yet</option>
+      {
+        policies.map((policy) => (
+          <option value={policy.id} selected={policy.id === values.policy_version_id}>
+            Version {policy.version}: {policy.title}
+          </option>
+        ))
+      }
+    </select>
+  </Field>
+
+  <Field
+    name="custom_questions"
+    label="Extra questions for travelers"
+    help="One question per line. Each is an optional short answer on the booking form."
+    error={errors.custom_questions}
+  >
+    <textarea id="custom_questions" name="custom_questions" rows="4" class={input} disabled={!canEdit} aria-describedby={errors.custom_questions ? "custom_questions-error" : "custom_questions-help"}>{values.custom_questions}</textarea>
+  </Field>
+
+  {
+    canEdit && (
+      <div class="flex items-center gap-6 pt-2">
+        <button type="submit" class="cursor-pointer bg-dark px-8 py-3 text-sm font-medium uppercase tracking-[0.15em] text-white transition-colors hover:bg-orange">
+          {id ? "Save changes" : "Create departure"}
+        </button>
+        <a href="/admin/departures" class="text-sm text-warm-mid underline underline-offset-4 hover:text-dark">
+          Cancel
+        </a>
+      </div>
+    )
+  }
+</form>

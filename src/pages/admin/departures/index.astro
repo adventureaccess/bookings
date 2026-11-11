@@ -1,0 +1,74 @@
+---
+import Notice from "../../../components/Notice.astro";
+import Admin from "../../../layouts/Admin.astro";
+import { listDepartures } from "../../../lib/admin/db";
+import { canWrite } from "../../../lib/auth/staff";
+import { formatDateRange } from "../../../lib/dates";
+import { formatUsd } from "../../../lib/money";
+
+const departures = await listDepartures();
+const canEdit = canWrite(Astro.locals.staff);
+const flash = Astro.url.searchParams.get("done");
+const FLASH: Record<string, string> = {
+  created: "Departure created.",
+  saved: "Changes saved.",
+  deleted: "Departure deleted.",
+};
+const STATUS_LABEL = { open: "Open", full: "Full", closed: "Closed", canceled: "Canceled" } as const;
+---
+
+<Admin title="Departures">
+  {flash && FLASH[flash] && <Notice kind="success">{FLASH[flash]}</Notice>}
+
+  {
+    canEdit && (
+      <a href="/admin/departures/new" class="inline-block bg-dark px-6 py-2 text-sm font-medium uppercase tracking-[0.15em] text-white transition-colors hover:bg-orange">
+        New departure
+      </a>
+    )
+  }
+
+  <div class="mt-8 overflow-x-auto">
+    <table class="w-full min-w-[44rem] text-left text-sm">
+      <thead class="border-b border-warm-light text-xs uppercase tracking-wider text-warm-mid">
+        <tr>
+          <th scope="col" class="py-2 pr-4 font-medium">Trip</th>
+          <th scope="col" class="py-2 pr-4 font-medium">Dates</th>
+          <th scope="col" class="py-2 pr-4 font-medium">Price</th>
+          <th scope="col" class="py-2 pr-4 font-medium">Deposit</th>
+          <th scope="col" class="py-2 pr-4 font-medium">Seats</th>
+          <th scope="col" class="py-2 font-medium">Status</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-cream-dark">
+        {
+          departures.map((d) => (
+            <tr>
+              <td class="py-3 pr-4">
+                <a class="text-dark underline decoration-orange underline-offset-4" href={`/admin/departures/${d.id}`}>
+                  {d.trips?.title ?? "Unknown trip"}
+                </a>
+              </td>
+              <td class="py-3 pr-4 whitespace-nowrap">{formatDateRange(d.start_date, d.end_date)}</td>
+              <td class="py-3 pr-4">{formatUsd(d.price_cents)}</td>
+              <td class="py-3 pr-4">{formatUsd(d.deposit_cents)}</td>
+              <td class="py-3 pr-4">{d.max_travelers}</td>
+              <td class="py-3">
+                {STATUS_LABEL[d.status]}
+                {d.visibility === "private" && <span class="text-warm-mid">, private</span>}
+                {d.policy_version_id === null && <span class="text-warm-mid">, no policy</span>}
+              </td>
+            </tr>
+          ))
+        }
+        {
+          departures.length === 0 && (
+            <tr>
+              <td colspan="6" class="py-6 text-warm-mid">No departures yet.</td>
+            </tr>
+          )
+        }
+      </tbody>
+    </table>
+  </div>
+</Admin>

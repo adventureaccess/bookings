@@ -288,6 +288,18 @@ describe("row-level security", () => {
     });
   });
 
+  it("refuses a staff email that did not sign in with Google", async () => {
+    await as(
+      db,
+      { role: "authenticated", email: "admin@adventure-access.com", provider: "email" },
+      async () => {
+        expect(await count("bookings")).toBe(0);
+        expect(await count("staff")).toBe(0);
+        await expect(seedDepartureAsCaller()).rejects.toThrow(/row-level security/);
+      },
+    );
+  });
+
   it("keeps read_only staff from writing", async () => {
     await as(db, { role: "authenticated", email: "viewer@adventure-access.com" }, async () => {
       await expect(

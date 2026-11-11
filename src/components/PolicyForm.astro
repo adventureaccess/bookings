@@ -1,0 +1,40 @@
+---
+import { actions } from "astro:actions";
+import type { PolicyFormErrors, PolicyFormValues } from "../lib/policies/form";
+import Field from "./Field.astro";
+
+interface Props {
+  id?: string;
+  values: PolicyFormValues;
+  errors: PolicyFormErrors;
+}
+
+const { id, values, errors } = Astro.props;
+const input = "w-full border border-warm-light bg-white px-3 py-2 text-charcoal";
+---
+
+<form method="POST" action={actions.savePolicy} class="max-w-3xl space-y-6" novalidate>
+  {id && <input type="hidden" name="id" value={id} />}
+
+  <Field name="title" label="Title" error={errors.title}>
+    <input id="title" name="title" type="text" maxlength="200" value={values.title} class={input} required aria-describedby={errors.title ? "title-error" : undefined} />
+  </Field>
+
+  <Field
+    name="body_md"
+    label="Policy text"
+    help="Plain text with Markdown: ## for a heading, - for a list item, a blank line between paragraphs."
+    error={errors.body_md}
+  >
+    <textarea id="body_md" name="body_md" rows="24" class={`${input} font-mono text-sm leading-relaxed`} required aria-describedby={errors.body_md ? "body_md-error" : "body_md-help"}>{values.body_md}</textarea>
+  </Field>
+
+  <div class="flex items-center gap-6">
+    <button type="submit" class="cursor-pointer bg-dark px-8 py-3 text-sm font-medium uppercase tracking-[0.15em] text-white transition-colors hover:bg-orange">
+      {id ? "Save draft" : "Create draft"}
+    </button>
+    <a href="/admin/policies" class="text-sm text-warm-mid underline underline-offset-4 hover:text-dark">
+      Cancel
+    </a>
+  </div>
+</form>

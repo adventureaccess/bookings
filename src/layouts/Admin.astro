@@ -1,0 +1,80 @@
+---
+import { canWrite } from "../lib/auth/staff";
+import Base from "./Base.astro";
+
+interface Props {
+  title: string;
+}
+
+const { title } = Astro.props;
+// The middleware guarantees a staff member on every admin page. If that ever
+// stops being true, fail loudly instead of rendering admin content.
+const staff = Astro.locals.staff;
+if (!staff) throw new Error("Admin layout rendered without a staff session");
+
+const path = Astro.url.pathname;
+const NAV = [
+  { href: "/admin", label: "Overview" },
+  { href: "/admin/departures", label: "Departures" },
+  { href: "/admin/trips", label: "Trips" },
+  { href: "/admin/policies", label: "Policies" },
+];
+const isCurrent = (href: string) =>
+  href === "/admin" ? path === "/admin" || path === "/admin/" : path.startsWith(href);
+const ROLE_LABEL = { admin: "Admin", staff: "Staff", read_only: "Read only" } as const;
+---
+
+<Base title={`${title} · Admin`}>
+  <header class="border-b border-cream-dark bg-white">
+    <div class="mx-auto flex max-w-5xl flex-wrap items-center gap-x-8 gap-y-3 px-6 py-4">
+      <a href="/admin" class="font-serif text-xl text-dark">
+        Adventure Access <span class="text-warm-mid">bookings</span>
+      </a>
+      <nav aria-label="Admin" class="flex flex-wrap gap-x-6 gap-y-1 text-sm">
+        {
+          NAV.map((item) => (
+            <a
+              href={item.href}
+              aria-current={isCurrent(item.href) ? "page" : undefined}
+              class:list={[
+                "border-b-2 pb-0.5",
+                isCurrent(item.href)
+                  ? "border-orange font-medium text-dark"
+                  : "border-transparent text-warm-mid hover:text-dark",
+              ]}
+            >
+              {item.label}
+            </a>
+          ))
+        }
+      </nav>
+      <div class="ml-auto flex items-center gap-4 text-sm text-warm-mid">
+        <span>
+          {staff.email}
+          <span class="ml-1 bg-cream-dark px-2 py-0.5 text-xs text-charcoal">
+            {ROLE_LABEL[staff.role]}
+          </span>
+        </span>
+        <form method="POST" action="/admin/logout">
+          <button type="submit" class="cursor-pointer underline underline-offset-4 hover:text-dark">
+            Sign out
+          </button>
+        </form>
+      </div>
+    </div>
+  </header>
+
+  <main class="mx-auto w-full max-w-5xl flex-1 px-6 py-10">
+    <h1 class="text-4xl font-light">{title}</h1>
+    {
+      !canWrite(staff) && (
+        <p class="mt-3 text-sm text-warm-mid">
+          Your account is read only. You can view everything here but not change it.
+        </p>
+      )
+    }
+    <div class="mt-8">
+      <slot />
+    </div>
+  </main>
+</Base>
