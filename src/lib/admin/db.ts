@@ -1,5 +1,6 @@
 import { maskEmail, type StaffSession } from "../auth/staff";
 import type {
+  BookingListItem,
   Departure,
   DepartureWithTrip,
   PolicyVersion,
@@ -345,4 +346,21 @@ export async function publishPolicy(
   if (!data || data.length === 0) return fail("This version is already published.");
   await logActivity(staff, "policy_version", id, "publish", { version: data[0]?.version });
   return { ok: true, value: null };
+}
+
+// --- Bookings --------------------------------------------------------------
+
+export async function listBookings(): Promise<BookingListItem[]> {
+  const { data, error } = await createServiceClient()
+    .from("bookings")
+    .select(
+      `id, reference, status, traveler_count, total_cents, paid_cents, created_at,
+       departures ( start_date, end_date, trips ( title ) ),
+       seat_holds ( seats, expires_at ),
+       travelers!travelers_booking_id_fkey ( first_name, last_name, email, is_lead )`,
+    )
+    .order("created_at", { ascending: false })
+    .limit(200);
+  if (error) logDbError("listBookings", error);
+  return (data ?? []) as unknown as BookingListItem[];
 }

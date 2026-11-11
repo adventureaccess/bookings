@@ -64,7 +64,7 @@ Seats available = max_travelers − confirmed travelers − unexpired holds. Che
 - Coupons are Stripe promotion codes. Read the discount from the completed session, never from the form. **(review, default)** The discount reduces `total_cents` (stored in `discount_cents`); `paid_cents` is what was actually charged.
 - Refunds: the admin calls the Stripe API with a reason and logs who and why. The `charge.refunded` webhook writes the `payments` row, so dashboard refunds are captured too **(review)**. Partial refunds allowed.
 - Webhooks: `checkout.session.completed`, `checkout.session.expired`, `payment_intent.payment_failed`, `charge.refunded`, `invoice.paid`. Verify the signature, store the event ID first, skip events already processed.
-- A traveler who cancels Checkout and resubmits reuses the same pending booking and hold. Never a second hold **(review)**.
+- A traveler who cancels Checkout and resubmits reuses the same pending booking and hold. Never a second hold **(review)**. The browser remembers the pending booking in an httpOnly cookie; the booking transaction takes it as a resume id.
 - A late `checkout.session.completed` for an expired hold still confirms if a seat is free. If not, set `needs_attention` and do not auto-refund.
 - Test mode everywhere until Will flips the keys.
 
@@ -72,7 +72,7 @@ Seats available = max_travelers − confirmed travelers − unexpired holds. Che
 
 - No card data touches our servers. Stripe Checkout only; no Elements in v1.
 - Secrets live in Netlify environment variables (set in the UI, never in `netlify.toml`), server-only, marked as secret values. Every variable is declared in the `env.schema` in `astro.config.ts` and read through `astro:env/server`. No variable uses Astro's browser-exposed `PUBLIC_` prefix; CI fails if one appears. `.env.example` has names only.
-- RLS on every table. Public routes use server code with narrow queries. The service role is used only in the webhook, cron routes, the booking transaction and admin actions after a role check.
+- RLS on every table. Public routes use server code with narrow queries. The service role is used only in the webhook, cron routes, the booking flow and admin actions after a role check. In the booking flow it only calls purpose-built SQL functions (seat counts, the departure for its booking page, the booking transaction, a traveler's own booking summary), which no public role can execute (milestone 3: seat counts need bookings and holds, which the public role must never read).
 - Admin requires Google sign-in with a verified `@adventure-access.com` email present in `staff`. Check the role on the server for every admin action.
 - Booking pages are addressed by reference plus a signed token, never sequential IDs. They show no other traveler's email or phone.
 - Zod on every field with length caps. Honeypot plus Cloudflare Turnstile on the booking form. Rate limits on form posts and webhook-adjacent routes (Postgres-backed).

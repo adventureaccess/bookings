@@ -1,0 +1,19 @@
+---
+import Public from "../layouts/Public.astro";
+
+Astro.response.status = 404;
+---
+
+<Public title="Page not found">
+  <div class="py-16 text-center">
+    <h1 class="text-5xl font-light">Page not found.</h1>
+    <p class="mx-auto mt-6 max-w-md text-warm-mid">
+      That link does not lead anywhere. It may be mistyped, or the departure may no longer be open.
+    </p>
+    <p class="mt-8">
+      <a class="text-dark underline decoration-orange underline-offset-4" href="/">
+        See open departures
+      </a>
+    </p>
+  </div>
+</Public>

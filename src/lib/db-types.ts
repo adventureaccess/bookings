@@ -46,3 +46,20 @@ export interface PolicyVersion {
   published_at: string | null;
   updated_at: string;
 }
+
+export interface BookingListItem {
+  id: string;
+  reference: string;
+  status: "pending" | "deposit_paid" | "paid_in_full" | "canceled" | "refunded";
+  traveler_count: number;
+  total_cents: number;
+  paid_cents: number;
+  created_at: string;
+  departures: {
+    start_date: string;
+    end_date: string;
+    trips: Pick<Trip, "title"> | null;
+  } | null;
+  seat_holds: { seats: number; expires_at: string } | null;
+  travelers: { first_name: string; last_name: string; email: string | null; is_lead: boolean }[];
+}
