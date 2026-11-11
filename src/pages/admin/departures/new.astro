@@ -5,7 +5,7 @@ import Notice from "../../../components/Notice.astro";
 import Admin from "../../../layouts/Admin.astro";
 import { listPolicies, listTrips } from "../../../lib/admin/db";
 import { canWrite } from "../../../lib/auth/staff";
-import type { DepartureFormValues } from "../../../lib/departures/form";
+import { scheduleToValues, type DepartureFormValues } from "../../../lib/departures/form";
 
 const result = Astro.getActionResult(actions.saveDeparture);
 if (result?.data?.ok) return Astro.redirect("/admin/departures?done=created");
@@ -27,6 +27,7 @@ const blank: DepartureFormValues = {
   visibility: "public",
   policy_version_id: "",
   custom_questions: "",
+  ...scheduleToValues([]),
 };
 ---
 

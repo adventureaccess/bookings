@@ -58,7 +58,7 @@ insert into public.staff (email, role) values ('name@adventure-access.com', 'sta
 
 **What the admin does**
 
-- **Departures:** create, edit and delete. Prices are entered in dollars and stored in cents. A blank balance due date becomes 60 days before the start date. A private departure gets an unguessable link. A departure with bookings cannot be deleted; cancel it instead.
+- **Departures:** create, edit and delete. Prices are entered in dollars and stored in cents. A blank final balance due date becomes 60 days before the start date. Each departure can also list up to four scheduled payments between the deposit and the final balance: a name, a due date and an amount per person. They must fall before the final balance date, and with the deposit they cannot add up to more than the price. A private departure gets an unguessable link. A departure with bookings cannot be deleted; cancel it instead.
 - **Policies:** a draft can be edited freely. Publishing locks the text for good, in the app and in the database, so there is a permanent record of what each traveler agreed to. Only a published version can be attached to a departure.
 - **Trips:** "Sync from website" reads the feed at `TRIPS_FEED_URL` and updates slug, title, destination and hero image. A trip that left the feed is switched off, never deleted. Until the website publishes the feed, the button explains that it is not set up.
 - Every change is written to `activity_log` with who made it.
@@ -82,7 +82,7 @@ npx supabase db push
 
 `--dry-run` lists what would be applied. Read it before the real push, and check the project ref is the dev project. To add a migration, run `npx supabase migration new <name>` and fill in the file it creates; do not edit one that has been applied.
 
-The dev project is "Bookings" (ref `pvfnlahywytptizpgkwo`). The seven migrations in this folder are already applied there, and the filenames match the versions recorded in the database, so `db push` only sends new ones.
+The dev project is "Bookings" (ref `pvfnlahywytptizpgkwo`). The eight migrations in this folder are already applied there, and the filenames match the versions recorded in the database, so `db push` only sends new ones.
 
 ## Hosting on Netlify
 

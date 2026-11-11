@@ -137,6 +137,18 @@ describe("constraints", () => {
     );
   });
 
+  it("keeps the payment schedule as a list, empty by default", async () => {
+    const { departureId } = await seedDeparture();
+    const { rows } = await db.query<{ payment_schedule: unknown }>(
+      "select payment_schedule from departures where id = $1",
+      [departureId],
+    );
+    expect(rows[0]?.payment_schedule).toEqual([]);
+    await expect(seedDeparture({ payment_schedule: '{"amount_cents": 100}' })).rejects.toThrow(
+      /departures_payment_schedule_array/,
+    );
+  });
+
   it("requires a token on a private departure", async () => {
     await expect(seedDeparture({ visibility: "private" })).rejects.toThrow(
       /departures_private_needs_token/,

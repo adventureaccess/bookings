@@ -143,7 +143,7 @@ export async function syncTrips(
 // --- Departures ------------------------------------------------------------
 
 const DEPARTURE_COLUMNS =
-  "id, trip_id, start_date, end_date, price_cents, deposit_cents, currency, balance_due_date, min_travelers, max_travelers, status, visibility, private_token, policy_version_id, custom_questions, updated_at";
+  "id, trip_id, start_date, end_date, price_cents, deposit_cents, currency, balance_due_date, min_travelers, max_travelers, status, visibility, private_token, policy_version_id, custom_questions, payment_schedule, updated_at";
 
 export async function listDepartures(): Promise<DepartureWithTrip[]> {
   const { data, error } = await createServiceClient()
