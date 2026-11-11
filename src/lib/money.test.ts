@@ -76,3 +76,37 @@ describe("formatUsd", () => {
     expect(formatUsd(0)).toBe("$0");
   });
 });
+
+import { centsToInputValue, parseDollarsToCents } from "./money";
+
+describe("parseDollarsToCents", () => {
+  it("reads whole dollars, commas, a dollar sign and cents", () => {
+    expect(parseDollarsToCents("4950")).toBe(495000);
+    expect(parseDollarsToCents("4,950")).toBe(495000);
+    expect(parseDollarsToCents(" $4,950.00 ")).toBe(495000);
+    expect(parseDollarsToCents("750.5")).toBe(75050);
+    expect(parseDollarsToCents("0")).toBe(0);
+  });
+
+  it("does not suffer floating-point rounding", () => {
+    expect(parseDollarsToCents("1.15")).toBe(115);
+    expect(parseDollarsToCents("19.99")).toBe(1999);
+    expect(parseDollarsToCents("4950.29")).toBe(495029);
+  });
+
+  it("rejects anything that is not a plain dollar amount", () => {
+    for (const bad of ["", "abc", "-5", "1.234", "1e3", "12.", ".50", "4 950", "1,2.3.4"]) {
+      expect(parseDollarsToCents(bad)).toBeNull();
+    }
+  });
+});
+
+describe("centsToInputValue", () => {
+  it("round-trips through parseDollarsToCents", () => {
+    for (const cents of [0, 5, 115, 75000, 495050]) {
+      expect(parseDollarsToCents(centsToInputValue(cents))).toBe(cents);
+    }
+    expect(centsToInputValue(495000)).toBe("4950");
+    expect(centsToInputValue(495050)).toBe("4950.50");
+  });
+});

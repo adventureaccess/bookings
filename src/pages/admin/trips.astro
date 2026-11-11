@@ -1,0 +1,72 @@
+---
+import { actions } from "astro:actions";
+import Notice from "../../components/Notice.astro";
+import Admin from "../../layouts/Admin.astro";
+import { listTrips } from "../../lib/admin/db";
+import { canWrite } from "../../lib/auth/staff";
+
+const result = Astro.getActionResult(actions.syncTrips);
+const trips = await listTrips();
+const canEdit = canWrite(Astro.locals.staff);
+---
+
+<Admin title="Trips">
+  {result?.error && <Notice kind="error">{result.error.message}</Notice>}
+  {result?.data && !result.data.ok && <Notice kind="error">{result.data.message}</Notice>}
+  {
+    result?.data?.ok && (
+      <Notice kind="success">
+        Sync finished: {result.data.summary.added} added, {result.data.summary.updated} updated,{" "}
+        {result.data.summary.unchanged} unchanged, {result.data.summary.deactivated} switched off.
+      </Notice>
+    )
+  }
+
+  <p class="max-w-2xl text-sm text-warm-mid">
+    Trips come from the website. This app keeps only the slug, title, destination and hero image;
+    everything else stays on the trip page. A trip that leaves the website feed is switched off
+    here, never deleted.
+  </p>
+
+  {
+    canEdit && (
+      <form method="POST" action={actions.syncTrips} class="mt-6">
+        <button type="submit" class="cursor-pointer border border-dark px-6 py-2 text-sm font-medium uppercase tracking-[0.15em] text-dark transition-colors hover:bg-dark hover:text-white">
+          Sync from website
+        </button>
+      </form>
+    )
+  }
+
+  <div class="mt-8 overflow-x-auto">
+    <table class="w-full min-w-[32rem] text-left text-sm">
+      <thead class="border-b border-warm-light text-xs uppercase tracking-wider text-warm-mid">
+        <tr>
+          <th scope="col" class="py-2 pr-4 font-medium">Trip</th>
+          <th scope="col" class="py-2 pr-4 font-medium">Slug</th>
+          <th scope="col" class="py-2 pr-4 font-medium">Destination</th>
+          <th scope="col" class="py-2 font-medium">Status</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-cream-dark">
+        {
+          trips.map((trip) => (
+            <tr>
+              <td class="py-3 pr-4 text-dark">{trip.title}</td>
+              <td class="py-3 pr-4 font-mono text-xs text-warm-mid">{trip.slug}</td>
+              <td class="py-3 pr-4 capitalize">{trip.destination}</td>
+              <td class="py-3">{trip.active ? "Active" : "Switched off"}</td>
+            </tr>
+          ))
+        }
+        {
+          trips.length === 0 && (
+            <tr>
+              <td colspan="4" class="py-6 text-warm-mid">No trips yet.</td>
+            </tr>
+          )
+        }
+      </tbody>
+    </table>
+  </div>
+</Admin>

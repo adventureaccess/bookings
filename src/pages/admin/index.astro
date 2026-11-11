@@ -1,0 +1,91 @@
+---
+import Admin from "../../layouts/Admin.astro";
+import { listDepartures, listPolicies, listTrips } from "../../lib/admin/db";
+import { formatDateRange } from "../../lib/dates";
+
+const [trips, departures, policies] = await Promise.all([
+  listTrips(),
+  listDepartures(),
+  listPolicies(),
+]);
+const today = new Date().toISOString().slice(0, 10);
+const upcoming = departures.filter((d) => d.end_date >= today && d.status !== "canceled");
+const published = policies.filter((p) => p.published_at !== null);
+const openWithoutPolicy = upcoming.filter(
+  (d) => d.status === "open" && d.policy_version_id === null,
+);
+
+const cards = [
+  { href: "/admin/departures", label: "Upcoming departures", value: upcoming.length },
+  { href: "/admin/trips", label: "Active trips", value: trips.filter((t) => t.active).length },
+  { href: "/admin/policies", label: "Published policies", value: published.length },
+];
+---
+
+<Admin title="Overview">
+  <div class="grid gap-4 sm:grid-cols-3">
+    {
+      cards.map((card) => (
+        <a href={card.href} class="block border border-cream-dark bg-white p-6 transition-colors hover:border-orange">
+          <p class="font-sans text-4xl font-light text-dark">{card.value}</p>
+          <p class="mt-1 text-sm text-warm-mid">{card.label}</p>
+        </a>
+      ))
+    }
+  </div>
+
+  {
+    (published.length === 0 || openWithoutPolicy.length > 0) && (
+      <section class="mt-10">
+        <h2 class="text-2xl">To do before taking bookings</h2>
+        <ul class="mt-3 list-disc space-y-2 pl-5 text-sm">
+          {published.length === 0 && (
+            <li>
+              No booking policy is published.{" "}
+              <a class="underline decoration-orange underline-offset-4" href="/admin/policies">
+                Review and publish one
+              </a>
+              .
+            </li>
+          )}
+          {openWithoutPolicy.map((d) => (
+            <li>
+              {d.trips?.title ?? "A departure"}, {formatDateRange(d.start_date, d.end_date)}, is
+              open with no policy attached.{" "}
+              <a class="underline decoration-orange underline-offset-4" href={`/admin/departures/${d.id}`}>
+                Attach one
+              </a>
+              .
+            </li>
+          ))}
+        </ul>
+      </section>
+    )
+  }
+
+  <section class="mt-10">
+    <h2 class="text-2xl">Next departures</h2>
+    {
+      upcoming.length === 0 ? (
+        <p class="mt-3 text-sm text-warm-mid">
+          None yet.{" "}
+          <a class="underline decoration-orange underline-offset-4" href="/admin/departures/new">
+            Create the first departure
+          </a>
+          .
+        </p>
+      ) : (
+        <ul class="mt-3 divide-y divide-cream-dark border-y border-cream-dark text-sm">
+          {upcoming.slice(0, 5).map((d) => (
+            <li class="flex flex-wrap justify-between gap-2 py-3">
+              <a class="text-dark underline decoration-orange underline-offset-4" href={`/admin/departures/${d.id}`}>
+                {d.trips?.title ?? "Unknown trip"}
+              </a>
+              <span class="text-warm-mid">{formatDateRange(d.start_date, d.end_date)}</span>
+            </li>
+          ))}
+        </ul>
+      )
+    }
+  </section>
+</Admin>

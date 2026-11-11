@@ -1,0 +1,50 @@
+---
+import { actions } from "astro:actions";
+import DepartureForm from "../../../components/DepartureForm.astro";
+import Notice from "../../../components/Notice.astro";
+import Admin from "../../../layouts/Admin.astro";
+import { listPolicies, listTrips } from "../../../lib/admin/db";
+import { canWrite } from "../../../lib/auth/staff";
+import type { DepartureFormValues } from "../../../lib/departures/form";
+
+const result = Astro.getActionResult(actions.saveDeparture);
+if (result?.data?.ok) return Astro.redirect("/admin/departures?done=created");
+
+const canEdit = canWrite(Astro.locals.staff);
+const [trips, policies] = await Promise.all([listTrips(), listPolicies()]);
+const failed = result?.data && !result.data.ok ? result.data : null;
+
+const blank: DepartureFormValues = {
+  trip_id: trips.length === 1 ? (trips[0]?.id ?? "") : "",
+  start_date: "",
+  end_date: "",
+  price: "",
+  deposit: "",
+  balance_due_date: "",
+  min_travelers: "1",
+  max_travelers: "",
+  status: "open",
+  visibility: "public",
+  policy_version_id: "",
+  custom_questions: "",
+};
+---
+
+<Admin title="New departure">
+  {result?.error && <Notice kind="error">{result.error.message}</Notice>}
+  {failed?.message && <Notice kind="error">{failed.message}</Notice>}
+  {
+    failed && !failed.message && (
+      <Notice kind="error">Some fields need attention. Nothing was saved.</Notice>
+    )
+  }
+  {!canEdit && <Notice>Your account is read only, so you cannot create departures.</Notice>}
+
+  <DepartureForm
+    values={failed?.values ?? blank}
+    errors={failed?.errors ?? {}}
+    trips={trips.filter((t) => t.active)}
+    policies={policies.filter((p) => p.published_at !== null)}
+    canEdit={canEdit}
+  />
+</Admin>

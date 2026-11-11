@@ -28,8 +28,10 @@ export default defineConfig({
       SUPABASE_URL: envField.string({ ...serverPublic, url: true }),
       // The anon key is safe to publish; row-level security protects the data.
       SUPABASE_ANON_KEY: envField.string({ ...serverPublic }),
-      // Milestone 2
-      SUPABASE_SERVICE_ROLE_KEY: envField.string({ ...secret, optional: true }),
+      // Bypasses row-level security. Server code only, after a role check.
+      SUPABASE_SERVICE_ROLE_KEY: envField.string({ ...secret }),
+      // Where the website publishes trips.json. Unset until that feed exists.
+      TRIPS_FEED_URL: envField.string({ ...serverPublic, url: true, optional: true }),
       // Milestone 3
       TOKEN_SIGNING_SECRET: envField.string({ ...secret, optional: true }),
       // Milestone 4

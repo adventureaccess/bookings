@@ -1,0 +1,116 @@
+---
+import { actions } from "astro:actions";
+import DepartureForm from "../../../components/DepartureForm.astro";
+import Notice from "../../../components/Notice.astro";
+import Admin from "../../../layouts/Admin.astro";
+import { getDeparture, listPolicies, listTrips } from "../../../lib/admin/db";
+import { canWrite } from "../../../lib/auth/staff";
+import { formatDateRange } from "../../../lib/dates";
+import { questionsToText, type DepartureFormValues } from "../../../lib/departures/form";
+import { centsToInputValue } from "../../../lib/money";
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const id = Astro.params.id ?? "";
+if (!UUID.test(id)) return new Response(null, { status: 404 });
+
+const saved = Astro.getActionResult(actions.saveDeparture);
+if (saved?.data?.ok) return Astro.redirect("/admin/departures?done=saved");
+const deleted = Astro.getActionResult(actions.deleteDeparture);
+if (deleted?.data?.ok) return Astro.redirect("/admin/departures?done=deleted");
+
+const departure = await getDeparture(id);
+if (!departure) return new Response(null, { status: 404 });
+
+const canEdit = canWrite(Astro.locals.staff);
+const [trips, policies] = await Promise.all([listTrips(), listPolicies()]);
+const trip = trips.find((t) => t.id === departure.trip_id);
+const failed = saved?.data && !saved.data.ok ? saved.data : null;
+const deleteMessage =
+  deleted?.error?.message ?? (deleted?.data && !deleted.data.ok ? deleted.data.message : null);
+
+const current: DepartureFormValues = {
+  trip_id: departure.trip_id,
+  start_date: departure.start_date,
+  end_date: departure.end_date,
+  price: centsToInputValue(departure.price_cents),
+  deposit: centsToInputValue(departure.deposit_cents),
+  balance_due_date: departure.balance_due_date,
+  min_travelers: String(departure.min_travelers),
+  max_travelers: String(departure.max_travelers),
+  status: departure.status,
+  visibility: departure.visibility,
+  policy_version_id: departure.policy_version_id ?? "",
+  custom_questions: questionsToText(departure.custom_questions),
+};
+
+// Where travelers will book. The booking page itself arrives in milestone 3.
+const bookingPath = trip ? `/${trip.slug}/${departure.id}` : null;
+const bookingUrl =
+  bookingPath &&
+  new URL(
+    departure.private_token ? `${bookingPath}?key=${departure.private_token}` : bookingPath,
+    Astro.url.origin,
+  ).href;
+---
+
+<Admin title={trip ? `${trip.title}` : "Departure"}>
+  <p class="-mt-4 mb-8 text-warm-mid">{formatDateRange(departure.start_date, departure.end_date)}</p>
+
+  {saved?.error && <Notice kind="error">{saved.error.message}</Notice>}
+  {failed?.message && <Notice kind="error">{failed.message}</Notice>}
+  {
+    failed && !failed.message && (
+      <Notice kind="error">Some fields need attention. Nothing was saved.</Notice>
+    )
+  }
+  {deleteMessage && <Notice kind="error">{deleteMessage}</Notice>}
+
+  <DepartureForm
+    id={departure.id}
+    values={failed?.values ?? current}
+    errors={failed?.errors ?? {}}
+    trips={trips.filter((t) => t.active || t.id === departure.trip_id)}
+    policies={policies.filter((p) => p.published_at !== null)}
+    canEdit={canEdit}
+  />
+
+  {
+    bookingUrl && (
+      <section class="mt-12 max-w-2xl border-t border-cream-dark pt-8">
+        <h2 class="text-2xl">Booking link</h2>
+        <p class="mt-2 text-sm text-warm-mid">
+          {departure.visibility === "private"
+            ? "This departure is private. Only people with this exact link can book it."
+            : "This is the address the trip page will link to."}{" "}
+          The booking page is not built yet, so the link does not work today.
+        </p>
+        <p class="mt-3 break-all bg-cream-dark px-3 py-2 font-mono text-xs text-charcoal">
+          {bookingUrl}
+        </p>
+      </section>
+    )
+  }
+
+  {
+    canEdit && (
+      <section class="mt-12 max-w-2xl border-t border-cream-dark pt-8">
+        <h2 class="text-2xl">Delete this departure</h2>
+        <p class="mt-2 text-sm text-warm-mid">
+          Only possible while it has no bookings. Once it has bookings, set the status to canceled
+          instead.
+        </p>
+        <details class="mt-4">
+          <summary class="cursor-pointer text-sm text-dark underline underline-offset-4">
+            I want to delete it
+          </summary>
+          <form method="POST" action={actions.deleteDeparture} class="mt-4">
+            <input type="hidden" name="id" value={departure.id} />
+            <button type="submit" class="cursor-pointer border border-orange px-6 py-2 text-sm font-medium uppercase tracking-[0.15em] text-orange transition-colors hover:bg-orange hover:text-white">
+              Delete permanently
+            </button>
+          </form>
+        </details>
+      </section>
+    )
+  }
+</Admin>

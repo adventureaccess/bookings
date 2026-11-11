@@ -1,0 +1,25 @@
+---
+/** A labeled form field with optional help text and an error message. */
+interface Props {
+  name: string;
+  label: string;
+  help?: string;
+  error?: string;
+}
+const { name, label, help, error } = Astro.props;
+---
+
+<div>
+  <label for={name} class="block text-sm font-medium text-dark">{label}</label>
+  <div class="mt-1">
+    <slot />
+  </div>
+  {help && !error && <p id={`${name}-help`} class="mt-1 text-xs text-warm-mid">{help}</p>}
+  {
+    error && (
+      <p id={`${name}-error`} role="alert" class="mt-1 text-xs font-medium text-orange">
+        {error}
+      </p>
+    )
+  }
+</div>

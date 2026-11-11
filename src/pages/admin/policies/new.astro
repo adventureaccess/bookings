@@ -1,0 +1,43 @@
+---
+import { actions } from "astro:actions";
+import Notice from "../../../components/Notice.astro";
+import PolicyForm from "../../../components/PolicyForm.astro";
+import Admin from "../../../layouts/Admin.astro";
+import { listPolicies } from "../../../lib/admin/db";
+import { canWrite } from "../../../lib/auth/staff";
+
+const result = Astro.getActionResult(actions.savePolicy);
+if (result?.data?.ok) return Astro.redirect("/admin/policies?done=created");
+
+const canEdit = canWrite(Astro.locals.staff);
+const failed = result?.data && !result.data.ok ? result.data : null;
+
+// Start a new version from the latest one, so a revision is an edit, not a retype.
+const latest = (await listPolicies())[0];
+const start = { title: latest?.title ?? "", body_md: latest?.body_md ?? "" };
+---
+
+<Admin title="New policy version">
+  {result?.error && <Notice kind="error">{result.error.message}</Notice>}
+  {failed?.message && <Notice kind="error">{failed.message}</Notice>}
+  {
+    failed && !failed.message && (
+      <Notice kind="error">Some fields need attention. Nothing was saved.</Notice>
+    )
+  }
+
+  {
+    canEdit ? (
+      <>
+        {latest && !failed && (
+          <Notice>
+            Started from version {latest.version}. Edit it, then save as a new draft.
+          </Notice>
+        )}
+        <PolicyForm values={failed?.values ?? start} errors={failed?.errors ?? {}} />
+      </>
+    ) : (
+      <Notice>Your account is read only, so you cannot create policy versions.</Notice>
+    )
+  }
+</Admin>

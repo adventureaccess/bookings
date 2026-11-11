@@ -1,0 +1,49 @@
+---
+import Base from "../../layouts/Base.astro";
+
+// Already signed in as staff: go straight to the admin.
+if (Astro.locals.staff) return Astro.redirect("/admin");
+
+const MESSAGES: Record<string, string> = {
+  not_staff:
+    "That Google account is not on the staff list. Sign in with your Adventure Access account, or ask an admin to add you.",
+  callback: "Sign-in did not complete. Try again.",
+  start: "Sign-in could not start. Try again in a minute.",
+};
+const error = MESSAGES[Astro.url.searchParams.get("error") ?? ""];
+const signedOut = Astro.url.searchParams.has("signed_out");
+---
+
+<Base title="Staff sign-in">
+  <main class="flex flex-1 flex-col items-center justify-center px-6 py-24 text-center">
+    <p class="text-xs font-medium uppercase tracking-[0.3em] text-orange">
+      Adventure Access
+    </p>
+    <h1 class="mt-6 text-4xl font-light sm:text-5xl">Staff sign-in</h1>
+    <p class="mt-4 max-w-sm text-warm-mid">
+      For Adventure Access staff. Use your company Google account.
+    </p>
+
+    {
+      error && (
+        <p role="alert" class="mt-6 max-w-sm border-l-2 border-orange bg-cream-dark px-4 py-3 text-left text-sm text-charcoal">
+          {error}
+        </p>
+      )
+    }
+    {
+      signedOut && !error && (
+        <p role="status" class="mt-6 text-sm text-warm-mid">You are signed out.</p>
+      )
+    }
+
+    <form method="POST" action="/admin/auth/start" class="mt-8">
+      <button
+        type="submit"
+        class="cursor-pointer bg-dark px-8 py-3 text-sm font-medium uppercase tracking-[0.15em] text-white transition-colors hover:bg-orange"
+      >
+        Sign in with Google
+      </button>
+    </form>
+  </main>
+</Base>
