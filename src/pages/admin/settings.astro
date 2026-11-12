@@ -1,0 +1,53 @@
+---
+import { actions } from "astro:actions";
+import Notice from "../../components/Notice.astro";
+import Admin from "../../layouts/Admin.astro";
+import { getCardFeeBps } from "../../lib/payments/db";
+import { cardFeeCents, formatFeePercent } from "../../lib/payments/due";
+import { formatUsd } from "../../lib/money";
+
+const result = Astro.getActionResult(actions.saveCardFee);
+if (result?.data?.ok) return Astro.redirect("/admin/settings?done=saved");
+const problem = result?.error?.message ?? (result?.data && !result.data.ok ? result.data.message : null);
+
+const feeBps = await getCardFeeBps();
+const isAdmin = Astro.locals.staff?.role === "admin";
+const example = 75000;
+---
+
+<Admin title="Settings">
+  {Astro.url.searchParams.get("done") === "saved" && <Notice kind="success">Card fee saved.</Notice>}
+  {problem && <Notice kind="error">{problem}</Notice>}
+
+  <section class="max-w-xl">
+    <h2 class="text-2xl">Card fee</h2>
+    <p class="mt-2 text-sm text-warm-mid">
+      Added on top of every card payment, on every trip, and shown to the traveler as its own
+      line before they pay. It does not count toward the trip price. Wires, ACH and checks never
+      carry it. A change applies to payments started after it is saved.
+    </p>
+
+    <form method="POST" action={actions.saveCardFee} class="mt-5 flex flex-wrap items-end gap-4">
+      <label class="block text-sm font-medium text-dark">
+        Percent
+        <input type="text" name="card_fee" inputmode="decimal" value={formatFeePercent(feeBps)} maxlength="6" required disabled={!isAdmin} class="mt-1 block w-28 border border-warm-light bg-white px-3 py-2 font-light text-charcoal disabled:bg-cream-dark disabled:text-warm-mid" />
+      </label>
+      {
+        isAdmin && (
+          <button type="submit" class="cursor-pointer bg-dark px-6 py-2 text-sm font-medium uppercase tracking-[0.15em] text-white transition-colors hover:bg-orange">
+            Save
+          </button>
+        )
+      }
+    </form>
+    <p class="mt-3 text-xs text-warm-mid">
+      From 0 to 10, like 3 or 2.9. Enter 0 to charge no fee.
+      {!isAdmin && " Only an admin can change it."}
+    </p>
+    <p class="mt-4 text-sm text-charcoal" data-testid="fee-example">
+      Today a {formatUsd(example)} card payment is charged{" "}
+      {formatUsd(example + cardFeeCents(example, feeBps))}:{" "}
+      {formatUsd(example)} for the trip and {formatUsd(cardFeeCents(example, feeBps))} in fee.
+    </p>
+  </section>
+</Admin>

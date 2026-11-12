@@ -22,7 +22,8 @@ interface PlanSource {
   payment_schedule: unknown;
 }
 
-function scheduledPayments(raw: unknown): PlanLine[] {
+/** The departure's scheduled payments, per person, in date order. Skips anything malformed. */
+export function scheduledPayments(raw: unknown): PlanLine[] {
   if (!Array.isArray(raw)) return [];
   const lines: PlanLine[] = [];
   for (const item of raw as unknown[]) {

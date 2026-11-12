@@ -2,7 +2,6 @@
 import { actions } from "astro:actions";
 import type { PolicyVersion, Trip } from "../lib/db-types";
 import {
-  BALANCE_DUE_DAYS_BEFORE,
   DEPARTURE_STATUSES,
   SCHEDULE_ROWS,
   type DepartureFormErrors,
@@ -70,10 +69,10 @@ const describe = (name: keyof DepartureFormErrors) =>
   <Field
     name="balance_due_date"
     label="Final balance due date"
-    help={`Whatever is still owed is due on this date. Leave blank for ${BALANCE_DUE_DAYS_BEFORE} days before the start date.`}
+    help="Whatever is still owed is due on this date. Set it for each trip."
     error={errors.balance_due_date}
   >
-    <input id="balance_due_date" name="balance_due_date" type="date" value={values.balance_due_date} class={`${input} sm:w-1/2`} disabled={!canEdit} aria-describedby={errors.balance_due_date ? "balance_due_date-error" : "balance_due_date-help"} />
+    <input id="balance_due_date" name="balance_due_date" type="date" value={values.balance_due_date} class={`${input} sm:w-1/2`} disabled={!canEdit} required aria-describedby={errors.balance_due_date ? "balance_due_date-error" : "balance_due_date-help"} />
   </Field>
 
   <fieldset aria-describedby={errors.payment_schedule ? "payment_schedule-error" : "payment_schedule-help"}>

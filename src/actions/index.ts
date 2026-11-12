@@ -9,7 +9,8 @@ import {
   syncTrips,
   type TripSyncSummary,
 } from "../lib/admin/db";
-import { canWrite, type StaffSession } from "../lib/auth/staff";
+import { requireWriter, UUID } from "./guards";
+import { paymentActions } from "./payments";
 import {
   createBooking,
   getBookingSummary,
@@ -42,22 +43,6 @@ import {
  * middleware has already resolved who is signed in.
  */
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/** The signed-in staff member, if they may change things. Otherwise throws. */
-function requireWriter(context: ActionAPIContext): StaffSession {
-  const staff = context.locals.staff;
-  if (!staff) {
-    throw new ActionError({ code: "UNAUTHORIZED", message: "Sign in first." });
-  }
-  if (!canWrite(staff)) {
-    throw new ActionError({
-      code: "FORBIDDEN",
-      message: "Your account can view but not change this.",
-    });
-  }
-  return staff;
-}
 
 /** An optional record id from a hidden form field. "" means a new record. */
 function readId(form: FormData): string | null {
@@ -126,6 +111,8 @@ function bookingRefusal(result: Extract<CreateBookingResult, { ok: false }>): st
 }
 
 export const server = {
+  ...paymentActions,
+
   /**
    * The public booking form. No sign-in: anyone who can see the departure may
    * book it. The browser sends names and answers only; every amount comes
