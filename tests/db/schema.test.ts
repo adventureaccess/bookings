@@ -7,6 +7,7 @@ const EXPECTED_TABLES = [
   "booking_adjustments",
   "bookings",
   "departures",
+  "itinerary_items",
   "payments",
   "policy_acceptances",
   "policy_versions",

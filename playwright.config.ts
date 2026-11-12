@@ -17,7 +17,18 @@ export default defineConfig({
     baseURL: "http://localhost:4321",
     trace: "retain-on-failure",
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
+  projects: [
+    {
+      name: "chromium",
+      // On Windows, use the installed Microsoft Edge. Windows application
+      // control can block the unsigned browser Playwright downloads; Edge is
+      // signed and always present. Elsewhere, Playwright's own Chromium.
+      use: {
+        ...devices["Desktop Chrome"],
+        ...(process.platform === "win32" ? { channel: "msedge" } : {}),
+      },
+    },
+  ],
   webServer: {
     command: "npm run dev",
     url: "http://localhost:4321",

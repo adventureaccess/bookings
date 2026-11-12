@@ -2,7 +2,7 @@
 
 Takes a traveler from a trip page to a paid deposit, recorded in Stripe and HubSpot. The full brief is in [CLAUDE.md](CLAUDE.md). This README covers running it.
 
-Status: milestone 4 (payments). Travelers register for a departure, see what they owe and pay by card through Stripe, with the card fee shown as its own line. Staff record wires, checks and credits, and set the card fee. Stripe is in test mode. No itinerary pages, documents, HubSpot or email yet.
+Status: milestone 5 (group itinerary and roster). Staff build a trip for a group from a tour in the library, edit its itinerary and send the group a private link. Each traveler sees the itinerary there, registers themselves and pays. Staff see a roster per trip. Stripe is in test mode. No documents, HubSpot or email yet.
 
 Built with Astro (server-rendered), hosted on Netlify, with a Supabase Postgres database.
 
@@ -79,6 +79,28 @@ insert into public.staff (email, role) values ('name@adventure-access.com', 'sta
 - **Seats left** = capacity, minus travelers on paid bookings, minus live holds on pending bookings. An expired hold stops counting by itself; no cleanup job is needed for that.
 - **`/admin/bookings`** lists bookings; each one opens to its travelers, payments and credits.
 
+## Group trips
+
+The normal case is a trip built for one group.
+
+1. **Create the departure** in the admin: choose the tour, give it a group name (a label only staff see), dates, price, deposit, the final balance date and any scheduled payments. Set "Who can see it" to "Private link only".
+2. **Open Itinerary** on the departure. "Copy from the tour" brings in the tour's itinerary from the library; "from another departure" copies one you already edited. Then change it for this group: edit, add, remove or reorder days and highlights. It belongs to this departure only.
+3. **Send the booking link** shown on the departure page. The group sees its itinerary, price and payment schedule, then the registration form.
+4. **Each traveler registers themselves** and gets their own booking page, where they pay. Someone booking and paying for dependents, such as their children, adds them to their own registration.
+5. **Open Roster** on the departure to see everyone who registered, what each has paid and what each owes.
+
+Two people registering one after the other on the same computer each get their own booking. Submitting again with the same email changes that person's pending booking instead.
+
+**The tour library.** Each tour carries a template itinerary. Until the website publishes its feed, load tours from the website repo on your machine:
+
+```powershell
+node scripts/import-tours.mjs --dry-run
+node scripts/import-tours.mjs ladakh-multisport
+node scripts/import-tours.mjs
+```
+
+The first shows what would change, the second loads one tour, the third loads all of them. It reads `..\adventure-access-site` (set `WEBSITE_REPO` for another place), adds tours that are missing and updates the rest. It never deletes a tour or switches one on or off. Ladakh Multisport is already loaded.
+
 ## Payments
 
 Money reaches a booking in two ways, and both end in the same database function, so the same rules apply.
@@ -114,7 +136,7 @@ npx supabase db push
 
 `--dry-run` lists what would be applied. Read it before the real push, and check the project ref is the dev project. To add a migration, run `npx supabase migration new <name>` and fill in the file it creates; do not edit one that has been applied.
 
-The dev project is "Bookings" (ref `pvfnlahywytptizpgkwo`). The ten migrations in this folder are already applied there, and the filenames match the versions recorded in the database, so `db push` only sends new ones.
+The dev project is "Bookings" (ref `pvfnlahywytptizpgkwo`). The eleven migrations in this folder are already applied there, and the filenames match the versions recorded in the database, so `db push` only sends new ones.
 
 ## Hosting on Netlify
 
@@ -148,7 +170,7 @@ npm run test:e2e
 ```
 
 - `npm run test:race` fires 20 bookings at once at a departure with one seat, on the real database, and fails unless exactly one gets a hold. It proves the row lock; the in-process test database cannot, because it runs one statement at a time.
-- `npm run test:e2e` drives the booking form in a real browser (Playwright). First time only: `npx playwright install chromium`.
+- `npm run test:e2e` drives the booking form in a real browser (Playwright). On Windows it uses the installed Microsoft Edge; elsewhere run `npx playwright install chromium` once.
 - Both create private throwaway departures and delete them afterward. Both need at least one published policy version.
 
 To exercise the webhook without the Stripe CLI, `node scripts/fake-stripe-event.mjs <reference> <amount_cents> <fee_cents>` sends the local dev server an event signed with your `STRIPE_WEBHOOK_SECRET`, exactly as Stripe would. Add `--bad-signature`, `--charged=<cents>` or a repeated `--event=<id>` to see it refused or skipped. It only talks to localhost.
@@ -157,6 +179,20 @@ To exercise the webhook without the Stripe CLI, `node scripts/fake-stripe-event.
 - `npm run check:env` fails if any browser-exposed environment variable name appears in the repo.
 - `npm run check:build` runs after the build and fails if the local-only staff shortcut reached the built app.
 - `npm run audit` fails on high or critical advisories.
+
+## If Windows blocks a file
+
+Windows application control (Smart App Control) can block unsigned programs that tools download. Two have been blocked on this machine:
+
+- **A native file Astro uses** (`satteri`). `npm run dev`, `typecheck` and `build` then stop with "An Application Control policy has blocked this file". The library ships a WebAssembly version for this case. Install it after every `npm ci`:
+
+```powershell
+npm install --no-save --force @bruits/satteri-wasm32-wasi@0.11.7
+```
+
+- **Playwright's own browser.** The browser tests use the installed Microsoft Edge on Windows for that reason.
+
+Neither changes any Windows setting, and neither affects Netlify or CI, which run on Linux.
 
 ## Layout
 
@@ -173,6 +209,7 @@ To exercise the webhook without the Stripe CLI, `node scripts/fake-stripe-event.
 | `src/lib/auth/` | Who counts as staff, and resolving the signed-in staff member |
 | `src/lib/admin/db.ts` | Admin data access (service role, after the role check) |
 | `src/lib/bookings/` | Booking form validation, payment plan, access tokens, and the calls to the booking SQL functions |
+| `src/lib/itinerary/`, `src/lib/admin/itinerary.ts` | Itinerary items, the tour template mapping, and the editor's and roster's data access |
 | `src/lib/payments/`, `src/lib/stripe/` | What is due, the card fee, the Checkout Session, reading Stripe events, and the calls to the money SQL functions |
 | `src/pages/api/` | The Stripe webhook and the cron route |
 | `netlify/functions/` | The hourly scheduled function |
@@ -183,7 +220,7 @@ To exercise the webhook without the Stripe CLI, `node scripts/fake-stripe-event.
 | `supabase/migrations/` | Schema, constraints, RLS policies and grants |
 | `tests/db/` | Database tests and the PGlite harness |
 | `tests/e2e/` | Playwright tests for the booking form |
-| `scripts/` | CI helper scripts |
+| `scripts/` | CI helper scripts, the race test, the tour import and the fake Stripe event sender |
 
 ## Rules
 

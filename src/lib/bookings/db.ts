@@ -49,6 +49,8 @@ export interface BookingDeparture {
   balance_due_date: string;
   payment_schedule: unknown;
   custom_questions: unknown;
+  /** The departure's own itinerary: days and highlights, in order. */
+  itinerary: unknown;
   status: "open" | "full";
   is_private: boolean;
   is_past: boolean;

@@ -1,0 +1,64 @@
+---
+import { readItinerary } from "../lib/itinerary/items";
+import PolicyText from "./PolicyText.astro";
+
+/** A departure's itinerary as the group sees it: the days in order, then the highlights. */
+interface Props {
+  items: unknown;
+}
+
+const items = readItinerary(Astro.props.items);
+const days = items.filter((item) => item.kind === "day");
+const highlights = items.filter((item) => item.kind === "highlight");
+---
+
+{
+  days.length > 0 && (
+    <section aria-labelledby="itinerary-heading">
+      <h2 id="itinerary-heading" class="text-3xl">Your itinerary</h2>
+      <ol class="mt-6 divide-y divide-cream-dark border-y border-cream-dark">
+        {days.map((day) => (
+          <li class="grid gap-6 py-8 md:grid-cols-[1fr_16rem]" data-testid="itinerary-day">
+            <div>
+              {day.day_label && (
+                <p class="text-xs font-medium uppercase tracking-[0.2em] text-orange">{day.day_label}</p>
+              )}
+              <h3 class="mt-1 text-2xl">{day.title}</h3>
+              {day.body_md && (
+                <div class="mt-3 max-w-prose">
+                  <PolicyText body={day.body_md} />
+                </div>
+              )}
+            </div>
+            {day.image_url && (
+              <img src={day.image_url} alt="" width="512" height="384" loading="lazy" class="aspect-[4/3] w-full object-cover md:order-last" />
+            )}
+          </li>
+        ))}
+      </ol>
+    </section>
+  )
+}
+
+{
+  highlights.length > 0 && (
+    <section aria-labelledby="highlights-heading" class:list={[days.length > 0 && "mt-12"]}>
+      <h2 id="highlights-heading" class="text-3xl">Highlights</h2>
+      <ul class="mt-6 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
+        {highlights.map((highlight) => (
+          <li data-testid="itinerary-highlight">
+            {highlight.image_url && (
+              <img src={highlight.image_url} alt="" width="512" height="384" loading="lazy" class="aspect-[4/3] w-full object-cover" />
+            )}
+            <h3 class="mt-3 text-xl">{highlight.title}</h3>
+            {highlight.body_md && (
+              <div class="mt-2">
+                <PolicyText body={highlight.body_md} />
+              </div>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}

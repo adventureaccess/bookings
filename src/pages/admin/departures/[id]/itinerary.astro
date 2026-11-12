@@ -1,0 +1,285 @@
+---
+import { actions } from "astro:actions";
+import Notice from "../../../../components/Notice.astro";
+import Admin from "../../../../layouts/Admin.astro";
+import { getDeparture, listDepartures, listTrips } from "../../../../lib/admin/db";
+import { countItineraries, getTourTemplate, listItinerary } from "../../../../lib/admin/itinerary";
+import { canWrite } from "../../../../lib/auth/staff";
+import { formatDateRange } from "../../../../lib/dates";
+import { ITEM_KINDS, MAX_ITEMS, type ItemFormErrors, type ItemFormValues } from "../../../../lib/itinerary/items";
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const id = Astro.params.id ?? "";
+if (!UUID.test(id)) return new Response(null, { status: 404 });
+const here = `/admin/departures/${id}/itinerary`;
+
+// Every form posts back to this page. On success, reload it clean.
+const saved = Astro.getActionResult(actions.saveItineraryItem);
+if (saved?.data?.ok) return Astro.redirect(`${here}?done=saved`);
+const simple = [
+  { result: Astro.getActionResult(actions.deleteItineraryItem), done: "removed" },
+  { result: Astro.getActionResult(actions.moveItineraryItem), done: "moved" },
+  { result: Astro.getActionResult(actions.copyItinerary), done: "copied" },
+];
+for (const { result, done } of simple) {
+  if (result?.data?.ok) return Astro.redirect(`${here}?done=${done}`);
+}
+
+const departure = await getDeparture(id);
+if (!departure) return new Response(null, { status: 404 });
+
+const canEdit = canWrite(Astro.locals.staff);
+const [items, template, trips, departures, counts] = await Promise.all([
+  listItinerary(id),
+  getTourTemplate(id),
+  listTrips(),
+  listDepartures(),
+  countItineraries(),
+]);
+const trip = trips.find((t) => t.id === departure.trip_id);
+const sources = departures.filter((d) => d.id !== id && (counts.get(d.id) ?? 0) > 0);
+
+const failedItem = saved?.data && !saved.data.ok ? saved.data : null;
+const problem =
+  saved?.error?.message ??
+  failedItem?.message ??
+  simple
+    .map(({ result }) => result?.error?.message ?? (result?.data && !result.data.ok ? result.data.message : null))
+    .find((message) => message);
+
+const FLASH: Record<string, string> = {
+  saved: "Itinerary saved.",
+  removed: "Item removed.",
+  moved: "Order changed.",
+  copied: "Itinerary copied. Edit it for this group below.",
+};
+const flash = Astro.url.searchParams.get("done");
+
+const blank: ItemFormValues = { kind: "day", day_label: "", title: "", body_md: "", image_url: "" };
+const valuesFor = (itemId: string, stored: ItemFormValues): ItemFormValues =>
+  failedItem && failedItem.itemId === itemId ? failedItem.values : stored;
+const errorsFor = (itemId: string): ItemFormErrors =>
+  failedItem && failedItem.itemId === itemId ? failedItem.errors : {};
+
+const input = "w-full border border-warm-light bg-white px-3 py-2 font-light text-charcoal";
+const small =
+  "cursor-pointer border border-warm-light px-3 py-1 text-xs uppercase tracking-[0.12em] text-charcoal hover:border-dark disabled:cursor-default disabled:opacity-40";
+const KIND_LABEL = { day: "Day or days", highlight: "Highlight" } as const;
+---
+
+<Admin title="Itinerary">
+  <p class="-mt-4 mb-8 text-warm-mid">
+    {trip?.title ?? "Departure"}
+    {departure.group_name && `, ${departure.group_name}`}, {formatDateRange(departure.start_date, departure.end_date)}
+    {" · "}
+    <a class="underline underline-offset-4" href={`/admin/departures/${id}`}>Back to the departure</a>
+  </p>
+
+  {flash && FLASH[flash] && <Notice kind="success">{FLASH[flash]}</Notice>}
+  {problem && <Notice kind="error">{problem}</Notice>}
+  {
+    failedItem && !failedItem.message && (
+      <Notice kind="error">Some fields need attention. Nothing was saved.</Notice>
+    )
+  }
+
+  <p class="max-w-prose text-sm text-warm-mid">
+    This is what the group sees on its booking page: the days in order, then the highlights. It
+    belongs to this departure only; changing it does not change the tour or any other group.
+  </p>
+
+  {
+    canEdit && (template.length > 0 || sources.length > 0) && (
+      <details class="mt-6 max-w-2xl border border-cream-dark bg-white" open={items.length === 0}>
+        <summary class="cursor-pointer px-4 py-3 text-sm text-dark underline underline-offset-4">
+          {items.length === 0 ? "Start from a copy" : "Replace with a copy"}
+        </summary>
+        <div class="space-y-5 border-t border-cream-dark px-4 py-4">
+          {items.length > 0 && (
+            <p class="text-sm font-medium text-orange">
+              Copying replaces all {items.length} items below. It cannot be undone.
+            </p>
+          )}
+          {template.length > 0 && (
+            <form method="POST" action={actions.copyItinerary} class="flex flex-wrap items-center gap-4">
+              <input type="hidden" name="departure_id" value={id} />
+              <input type="hidden" name="source" value="tour" />
+              <button type="submit" class="cursor-pointer bg-dark px-5 py-2 text-sm font-medium uppercase tracking-[0.15em] text-white hover:bg-orange">
+                Copy from the tour
+              </button>
+              <span class="text-sm text-warm-mid">
+                {trip?.title}: {template.length} items in the library.
+              </span>
+            </form>
+          )}
+          {sources.length > 0 && (
+            <form method="POST" action={actions.copyItinerary} class="flex flex-wrap items-end gap-4">
+              <input type="hidden" name="departure_id" value={id} />
+              <label class="block text-sm font-medium text-dark">
+                Or from another departure
+                <select name="source" class={`${input} mt-1`} required>
+                  {sources.map((d) => (
+                    <option value={d.id}>
+                      {d.trips?.title ?? "Trip"}
+                      {d.group_name ? `, ${d.group_name}` : ""}, {formatDateRange(d.start_date, d.end_date)} (
+                      {counts.get(d.id)} items)
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button type="submit" class="cursor-pointer border border-dark px-5 py-2 text-sm font-medium uppercase tracking-[0.15em] text-dark hover:bg-dark hover:text-white">
+                Copy
+              </button>
+            </form>
+          )}
+        </div>
+      </details>
+    )
+  }
+
+  <section class="mt-10 max-w-3xl">
+    <h2 class="text-2xl">
+      {items.length === 0 ? "No itinerary yet" : `${items.length} ${items.length === 1 ? "item" : "items"}`}
+    </h2>
+    <ol class="mt-4 space-y-3">
+      {
+        items.map((item, index) => {
+          const values = valuesFor(item.id, {
+            kind: item.kind,
+            day_label: item.day_label,
+            title: item.title,
+            body_md: item.body_md,
+            image_url: item.image_url ?? "",
+          });
+          const errors = errorsFor(item.id);
+          const hasErrors = Object.keys(errors).length > 0;
+          return (
+            <li class="border border-cream-dark bg-white" data-item={item.title}>
+              <details open={hasErrors}>
+                <summary class="flex cursor-pointer flex-wrap items-baseline gap-x-3 px-4 py-3">
+                  <span class="text-xs uppercase tracking-[0.12em] text-orange">
+                    {item.kind === "highlight" ? "Highlight" : item.day_label || "Day"}
+                  </span>
+                  <span class="text-dark">{item.title}</span>
+                </summary>
+                <div class="border-t border-cream-dark px-4 py-4">
+                  {canEdit ? (
+                    <>
+                      <form method="POST" action={actions.saveItineraryItem} class="space-y-4">
+                        <input type="hidden" name="departure_id" value={id} />
+                        <input type="hidden" name="item_id" value={item.id} />
+                        <div class="grid gap-4 sm:grid-cols-[10rem_10rem_1fr]">
+                          <label class="block text-sm font-medium text-dark">
+                            Kind
+                            <select name="kind" class={`${input} mt-1`}>
+                              {ITEM_KINDS.map((kind) => (
+                                <option value={kind} selected={values.kind === kind}>{KIND_LABEL[kind]}</option>
+                              ))}
+                            </select>
+                          </label>
+                          <label class="block text-sm font-medium text-dark">
+                            Day label
+                            <input type="text" name="day_label" maxlength="40" value={values.day_label} placeholder="Days 1–2" class={`${input} mt-1`} />
+                            {errors.day_label && <span role="alert" class="mt-1 block text-xs font-medium text-orange">{errors.day_label}</span>}
+                          </label>
+                          <label class="block text-sm font-medium text-dark">
+                            Title
+                            <input type="text" name="title" maxlength="200" value={values.title} required class={`${input} mt-1`} />
+                            {errors.title && <span role="alert" class="mt-1 block text-xs font-medium text-orange">{errors.title}</span>}
+                          </label>
+                        </div>
+                        <label class="block text-sm font-medium text-dark">
+                          Text
+                          <textarea name="body_md" rows="8" class={`${input} mt-1 text-sm leading-relaxed`}>{values.body_md}</textarea>
+                          {errors.body_md && <span role="alert" class="mt-1 block text-xs font-medium text-orange">{errors.body_md}</span>}
+                        </label>
+                        <label class="block text-sm font-medium text-dark">
+                          Photo address (optional)
+                          <input type="url" name="image_url" maxlength="500" value={values.image_url} placeholder="https://adventure-access.com/images/…" class={`${input} mt-1`} />
+                          {errors.image_url && <span role="alert" class="mt-1 block text-xs font-medium text-orange">{errors.image_url}</span>}
+                        </label>
+                        <button type="submit" class="cursor-pointer bg-dark px-5 py-2 text-sm font-medium uppercase tracking-[0.15em] text-white hover:bg-orange">
+                          Save this item
+                        </button>
+                      </form>
+                      <div class="mt-4 flex flex-wrap items-center gap-2 border-t border-cream-dark pt-4">
+                        <form method="POST" action={actions.moveItineraryItem}>
+                          <input type="hidden" name="departure_id" value={id} />
+                          <input type="hidden" name="item_id" value={item.id} />
+                          <input type="hidden" name="direction" value="up" />
+                          <button type="submit" class={small} disabled={index === 0}>Move up</button>
+                        </form>
+                        <form method="POST" action={actions.moveItineraryItem}>
+                          <input type="hidden" name="departure_id" value={id} />
+                          <input type="hidden" name="item_id" value={item.id} />
+                          <input type="hidden" name="direction" value="down" />
+                          <button type="submit" class={small} disabled={index === items.length - 1}>Move down</button>
+                        </form>
+                        <form method="POST" action={actions.deleteItineraryItem} class="ml-auto">
+                          <input type="hidden" name="departure_id" value={id} />
+                          <input type="hidden" name="item_id" value={item.id} />
+                          <button type="submit" class="cursor-pointer border border-orange px-3 py-1 text-xs uppercase tracking-[0.12em] text-orange hover:bg-orange hover:text-white">
+                            Remove
+                          </button>
+                        </form>
+                      </div>
+                    </>
+                  ) : (
+                    <p class="whitespace-pre-wrap text-sm text-charcoal">{item.body_md}</p>
+                  )}
+                </div>
+              </details>
+            </li>
+          );
+        })
+      }
+    </ol>
+  </section>
+
+  {
+    canEdit && items.length < MAX_ITEMS && (
+      <section class="mt-10 max-w-3xl border-t border-cream-dark pt-8">
+        <h2 class="text-2xl">Add an item</h2>
+        <form method="POST" action={actions.saveItineraryItem} class="mt-4 space-y-4">
+          <input type="hidden" name="departure_id" value={id} />
+          <div class="grid gap-4 sm:grid-cols-[10rem_10rem_1fr]">
+            <label class="block text-sm font-medium text-dark">
+              Kind
+              <select name="kind" class={`${input} mt-1`}>
+                {ITEM_KINDS.map((kind) => (
+                  <option value={kind} selected={valuesFor("", blank).kind === kind}>{KIND_LABEL[kind]}</option>
+                ))}
+              </select>
+            </label>
+            <label class="block text-sm font-medium text-dark">
+              Day label
+              <input type="text" name="day_label" maxlength="40" value={valuesFor("", blank).day_label} placeholder="Day 3" class={`${input} mt-1`} />
+            </label>
+            <label class="block text-sm font-medium text-dark">
+              Title
+              <input type="text" name="title" maxlength="200" value={valuesFor("", blank).title} required class={`${input} mt-1`} />
+              {errorsFor("").title && <span role="alert" class="mt-1 block text-xs font-medium text-orange">{errorsFor("").title}</span>}
+            </label>
+          </div>
+          <label class="block text-sm font-medium text-dark">
+            Text
+            <textarea name="body_md" rows="6" class={`${input} mt-1 text-sm leading-relaxed`}>{valuesFor("", blank).body_md}</textarea>
+            {errorsFor("").body_md && <span role="alert" class="mt-1 block text-xs font-medium text-orange">{errorsFor("").body_md}</span>}
+          </label>
+          <label class="block text-sm font-medium text-dark">
+            Photo address (optional)
+            <input type="url" name="image_url" maxlength="500" value={valuesFor("", blank).image_url} placeholder="https://adventure-access.com/images/…" class={`${input} mt-1`} />
+            {errorsFor("").image_url && <span role="alert" class="mt-1 block text-xs font-medium text-orange">{errorsFor("").image_url}</span>}
+          </label>
+          <p class="text-xs text-warm-mid">
+            Text is plain, with a blank line between paragraphs and "- " at the start of a list
+            line. New items go to the end; use Move up to place them.
+          </p>
+          <button type="submit" class="cursor-pointer bg-dark px-5 py-2 text-sm font-medium uppercase tracking-[0.15em] text-white hover:bg-orange">
+            Add to the itinerary
+          </button>
+        </form>
+      </section>
+    )
+  }
+</Admin>

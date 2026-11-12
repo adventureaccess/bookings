@@ -1,6 +1,7 @@
 ---
 import { actions } from "astro:actions";
 import Field from "../../components/Field.astro";
+import Itinerary from "../../components/Itinerary.astro";
 import Notice from "../../components/Notice.astro";
 import PaymentPlan from "../../components/PaymentPlan.astro";
 import PolicyText from "../../components/PolicyText.astro";
@@ -8,6 +9,7 @@ import Public from "../../layouts/Public.astro";
 import { getDepartureForBooking, HOLD_MINUTES } from "../../lib/bookings/db";
 import { HONEYPOT_FIELD, MAX_PARTY, partySize, readQuestions } from "../../lib/bookings/form";
 import { paymentPlan } from "../../lib/bookings/plan";
+import { readItinerary } from "../../lib/itinerary/items";
 import { formatDateRange } from "../../lib/dates";
 import { formatUsd } from "../../lib/money";
 
@@ -46,6 +48,7 @@ const count = partySize(
   departure.seats_left,
 );
 const plan = paymentPlan(departure, count);
+const hasItinerary = readItinerary(departure.itinerary).length > 0;
 const dates = formatDateRange(departure.start_date, departure.end_date);
 
 // Posting keeps the key in the address, so a private departure can be shown
@@ -61,11 +64,33 @@ const describedBy = (name: string, hasHelp = false) =>
 ---
 
 <Public title={`Book ${departure.trip_title}`}>
-  <p class="text-xs font-medium uppercase tracking-[0.3em] text-orange">Book your place</p>
+  <p class="text-xs font-medium uppercase tracking-[0.3em] text-orange">
+    {hasItinerary ? "Your trip" : "Book your place"}
+  </p>
   <h1 class="mt-3 text-5xl font-light">{departure.trip_title}</h1>
   <p class="mt-3 text-lg text-warm-mid">{dates}</p>
 
-  <div class="mt-10 grid gap-12 lg:grid-cols-[1fr_20rem]">
+  {
+    hasItinerary && (
+      <>
+        {canBook && (
+          <p class="mt-6">
+            <a href="#register" class="inline-block bg-dark px-6 py-2.5 text-sm font-medium uppercase tracking-[0.15em] text-white transition-colors hover:bg-orange">
+              Register for this trip
+            </a>
+          </p>
+        )}
+        <div class="mt-12">
+          <Itinerary items={departure.itinerary} />
+        </div>
+        <h2 id="register" class="mt-16 scroll-mt-8 border-t border-cream-dark pt-12 text-4xl font-light">
+          Register
+        </h2>
+      </>
+    )
+  }
+
+  <div class:list={["grid gap-12 lg:grid-cols-[1fr_20rem]", hasItinerary ? "mt-8" : "mt-10"]}>
     <div>
       {result?.error && <Notice kind="error">{result.error.message}</Notice>}
       {failed?.message && <Notice kind="error">{failed.message}</Notice>}
@@ -105,7 +130,7 @@ const describedBy = (name: string, hasHelp = false) =>
               {key && <input type="hidden" name="key" value={key} />}
               <div>
                 <label for="party" class="block text-sm font-medium text-dark">
-                  How many travelers?
+                  How many people are you registering?
                 </label>
                 <select id="party" name="travelers" class={`${input} mt-1 w-28`}>
                   {
@@ -124,7 +149,8 @@ const describedBy = (name: string, hasHelp = false) =>
                 {departure.seats_left === 1
                   ? "1 seat left."
                   : `${departure.seats_left} seats left.`}
-                {" "}Choose the number first: changing it clears the form below.
+                {" "}Most people register only themselves. Add others only if you are booking and paying
+                for them, such as your children. Choose the number first: changing it clears the form below.
                 {errors.travelers && (
                   <span role="alert" class="block font-medium text-orange">{errors.travelers}</span>
                 )}
@@ -147,12 +173,12 @@ const describedBy = (name: string, hasHelp = false) =>
                 Array.from({ length: count }, (_, i) => i + 1).map((n) => (
                   <fieldset class="space-y-5">
                     <legend class="font-serif text-2xl text-dark">
-                      {n === 1 ? (count === 1 ? "Your details" : "Lead traveler") : `Traveler ${n}`}
+                      {n === 1 ? "Your details" : `Traveler ${n}`}
                     </legend>
                     {n === 1 && count > 1 && (
                       <p class="text-sm text-warm-mid">
-                        The lead traveler is our contact for this booking and receives the
-                        confirmation.
+                        You are our contact for everyone on this registration, and you pay for
+                        them.
                       </p>
                     )}
                     <div class="grid gap-5 sm:grid-cols-2">
@@ -215,11 +241,12 @@ const describedBy = (name: string, hasHelp = false) =>
 
               <div>
                 <button type="submit" class="cursor-pointer bg-dark px-10 py-3 text-sm font-medium uppercase tracking-[0.15em] text-white transition-colors hover:bg-orange">
-                  Hold {count === 1 ? "my seat" : `${count} seats`}
+                  {count === 1 ? "Register" : `Register ${count} travelers`}
                 </button>
                 <p class="mt-3 text-xs text-warm-mid">
-                  We hold {count === 1 ? "your seat" : "your seats"} for {HOLD_MINUTES} minutes.
-                  Nothing is charged on this page.
+                  Nothing is charged on this page. Next you see what you owe and can pay the
+                  deposit. We hold {count === 1 ? "your seat" : "your seats"} for {HOLD_MINUTES} minutes
+                  while you do.
                 </p>
               </div>
             </form>

@@ -49,6 +49,8 @@ const MAX_PAYMENT_LABEL_LENGTH = 80;
 
 export interface DepartureInput {
   trip_id: string;
+  /** A staff label for a group trip, such as "Hulsey family". Null when blank. */
+  group_name: string | null;
   start_date: string;
   end_date: string;
   price_cents: number;
@@ -65,6 +67,7 @@ export interface DepartureInput {
 
 const BASE_FIELDS = [
   "trip_id",
+  "group_name",
   "start_date",
   "end_date",
   "price",
@@ -192,6 +195,9 @@ export function parseDepartureForm(form: FormData): DepartureFormResult {
   const errors: DepartureFormErrors = {};
 
   if (!UUID.test(values.trip_id)) errors.trip_id = "Choose a trip.";
+  if (values.group_name.length > 120) {
+    errors.group_name = "Keep the group name under 120 characters.";
+  }
 
   if (!isIsoDate(values.start_date)) errors.start_date = "Enter a start date.";
   if (!isIsoDate(values.end_date)) errors.end_date = "Enter an end date.";
@@ -251,6 +257,7 @@ export function parseDepartureForm(form: FormData): DepartureFormResult {
     ok: true,
     data: {
       trip_id: values.trip_id,
+      group_name: values.group_name || null,
       start_date: values.start_date,
       end_date: values.end_date,
       price_cents: price as number,

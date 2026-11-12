@@ -79,6 +79,17 @@ export async function createTestDeparture(seats: number): Promise<TestDeparture>
 
   const id = created.data.id as string;
   const slug = trip.data.slug as string;
+
+  // The group's own itinerary: two days and a highlight.
+  const itinerary = await db().rpc("replace_itinerary", {
+    p_departure_id: id,
+    p_items: [
+      { kind: "day", day_label: "Days 1–2", title: "Test valley arrival", body_md: "Settle in.\n\n- Day 1: Fly in.\n- Day 2: Walk.", image_url: null },
+      { kind: "day", day_label: "Day 3", title: "Test pass crossing", body_md: "A long day on foot.", image_url: null },
+      { kind: "highlight", day_label: "", title: "Test palace visit", body_md: "A palace above the village.", image_url: null },
+    ],
+  });
+  if (itinerary.error) throw new Error(`Could not add a test itinerary (${itinerary.error.code}).`);
   return { id, key, slug, path: `/${slug}/${id}?key=${key}` };
 }
 

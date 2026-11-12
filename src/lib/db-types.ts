@@ -14,6 +14,31 @@ export interface Trip {
   updated_at: string;
 }
 
+export interface ItineraryRow {
+  id: string;
+  departure_id: string;
+  position: number;
+  kind: "day" | "highlight";
+  day_label: string;
+  title: string;
+  body_md: string;
+  image_url: string | null;
+}
+
+/** One booking on a departure's roster. */
+export interface RosterBooking {
+  id: string;
+  reference: string;
+  status: "pending" | "deposit_paid" | "paid_in_full" | "canceled" | "refunded";
+  traveler_count: number;
+  total_cents: number;
+  discount_cents: number;
+  paid_cents: number;
+  needs_attention: boolean;
+  created_at: string;
+  travelers: { first_name: string; last_name: string; email: string | null; is_lead: boolean }[];
+}
+
 export interface Departure {
   id: string;
   trip_id: string;
@@ -31,6 +56,7 @@ export interface Departure {
   policy_version_id: string | null;
   custom_questions: unknown;
   payment_schedule: unknown;
+  group_name: string | null;
   updated_at: string;
 }
 
