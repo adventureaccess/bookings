@@ -14,6 +14,8 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:race": "node scripts/race-last-seat.mjs",
+    "test:e2e": "playwright test",
     "check:env": "node scripts/check-public-env.mjs",
     "audit": "npm audit --audit-level=high",
     "check:build": "node scripts/check-build.mjs"
@@ -29,6 +31,7 @@
   "devDependencies": {
     "@astrojs/check": "0.9.12",
     "@electric-sql/pglite": "0.5.16",
+    "@playwright/test": "1.65.0",
     "@tailwindcss/vite": "4.3.5",
     "@types/node": "22.20.5",
     "eslint": "10.14.0",

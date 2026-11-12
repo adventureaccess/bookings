@@ -1,21 +1,73 @@
 ---
-import Base from "../layouts/Base.astro";
+import Public from "../layouts/Public.astro";
+import { listBookableDepartures } from "../lib/bookings/db";
+import { formatDateRange } from "../lib/dates";
+import { formatUsd } from "../lib/money";
+
+// Seats change, so this list is never cached.
+Astro.response.headers.set("Cache-Control", "no-store");
+
+const departures = await listBookableDepartures();
 ---
 
-<Base>
-  <main
-    class="flex flex-1 flex-col items-center justify-center px-6 py-24 text-center"
-  >
-    <p class="text-xs font-medium uppercase tracking-[0.3em] text-orange">
-      Adventure Access
-    </p>
-    <h1 class="mt-6 text-5xl font-light sm:text-6xl">Bookings open soon.</h1>
-    <p class="mt-6 max-w-md text-warm-mid">
-      Small-group trips in Ladakh, Nepal, Bhutan and Yunnan. See the trips at{" "}
-      <a
-        class="text-dark underline decoration-orange underline-offset-4"
-        href="https://adventure-access.com">adventure-access.com</a
-      >.
-    </p>
-  </main>
-</Base>
+<Public>
+  {
+    departures.length === 0 ? (
+      <div class="flex flex-col items-center py-20 text-center">
+        <h1 class="text-5xl font-light sm:text-6xl">Bookings open soon.</h1>
+        <p class="mt-6 max-w-md text-warm-mid">
+          Small-group trips in Ladakh, Nepal, Bhutan and Yunnan. See the trips at{" "}
+          <a
+            class="text-dark underline decoration-orange underline-offset-4"
+            href="https://adventure-access.com"
+          >
+            adventure-access.com
+          </a>
+          .
+        </p>
+      </div>
+    ) : (
+      <>
+        <h1 class="text-5xl font-light">Open departures</h1>
+        <p class="mt-4 max-w-prose text-warm-mid">
+          Small-group trips in Ladakh, Nepal, Bhutan and Yunnan. Choose a date to book your place.
+        </p>
+        <ul class="mt-10 divide-y divide-cream-dark border-y border-cream-dark">
+          {departures.map((d) => {
+            const full = d.status === "full" || d.seats_left < 1;
+            return (
+              <li class="flex flex-wrap items-center gap-x-8 gap-y-3 py-6" data-departure={d.departure_id}>
+                <div class="min-w-0 flex-1 basis-64">
+                  <h2 class="text-3xl">{d.trip_title}</h2>
+                  <p class="mt-1 text-warm-mid">{formatDateRange(d.start_date, d.end_date)}</p>
+                </div>
+                <div class="text-sm">
+                  <p class="text-dark">{formatUsd(d.price_cents)} per person</p>
+                  <p class="text-warm-mid">
+                    {full
+                      ? "Full"
+                      : d.seats_left === 1
+                        ? "1 seat left"
+                        : `${d.seats_left} seats left`}
+                  </p>
+                </div>
+                {full ? (
+                  <span class="px-6 py-2.5 text-sm font-medium uppercase tracking-[0.15em] text-warm-mid">
+                    Full
+                  </span>
+                ) : (
+                  <a
+                    href={`/${d.trip_slug}/${d.departure_id}`}
+                    class="bg-dark px-6 py-2.5 text-sm font-medium uppercase tracking-[0.15em] text-white transition-colors hover:bg-orange"
+                  >
+                    Book
+                  </a>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+      </>
+    )
+  }
+</Public>

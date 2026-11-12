@@ -1,0 +1,28 @@
+---
+import { policyBlocks } from "../lib/policies/render";
+
+/** Policy text as real headings, paragraphs and lists. Never raw HTML. */
+interface Props {
+  body: string;
+}
+
+const blocks = policyBlocks(Astro.props.body);
+---
+
+<div class="space-y-3 text-sm leading-relaxed text-charcoal">
+  {
+    blocks.map((block) =>
+      block.type === "heading" ? (
+        <h3 class="pt-3 text-xl">{block.text}</h3>
+      ) : block.type === "list" ? (
+        <ul class="list-disc space-y-1 pl-5">
+          {block.items.map((item) => (
+            <li>{item}</li>
+          ))}
+        </ul>
+      ) : (
+        <p>{block.text}</p>
+      ),
+    )
+  }
+</div>

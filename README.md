@@ -2,7 +2,7 @@
 
 Takes a traveler from a trip page to a paid deposit, recorded in Stripe and HubSpot. The full brief is in [CLAUDE.md](CLAUDE.md). This README covers running it.
 
-Status: milestone 2 (staff admin and departures). Staff sign in with Google at `/admin` and manage departures, policy versions and the trip list. No traveler booking form, Stripe, HubSpot or email yet.
+Status: milestone 3 (booking form and holds). Travelers can fill in the booking form for a departure and have their seats held for 30 minutes. Staff sign in with Google at `/admin` and manage departures, policy versions and the trip list, and can see bookings. No payment, HubSpot or email yet.
 
 Built with Astro (server-rendered), hosted on Netlify, with a Supabase Postgres database.
 
@@ -69,6 +69,18 @@ insert into public.staff (email, role) values ('name@adventure-access.com', 'sta
 { "trips": [ { "slug": "ladakh-multisport", "title": "Ladakh Multisport", "destination": "ladakh", "heroImage": "https://adventure-access.com/images/2024/05/Ladakh-hero-image.jpg" } ] }
 ```
 
+## Booking flow
+
+- **`/`** lists public departures that can be booked: open or full, in the future, on an active trip, with a published policy attached.
+- **`/<trip-slug>/<departure-id>`** is the booking form. A private departure also needs `?key=<token>`; the admin shows the full link. The traveler picks the party size, enters names (email and phone for the lead only), answers the departure's extra questions and accepts the policy. The page shows what is due and when, worked out on the server. The browser never sends an amount.
+- **Submitting** runs one database transaction: it locks the departure, counts seats, and creates a pending booking, its travelers, the policy acceptance and a 30 minute seat hold, or refuses and writes nothing. Two people going for the last seat are handled one after the other.
+- **`/booking/<reference>?t=<token>`** is the traveler's own booking page. It needs both parts; only a hash of the token is stored. It shows no email or phone number.
+- **Coming back** and submitting again from the same browser changes the pending booking and reuses its hold. There is never a second hold.
+- **Seats left** = capacity, minus travelers on paid bookings, minus live holds on pending bookings. An expired hold stops counting by itself; no cleanup job is needed for that.
+- **`/admin/bookings`** lists bookings and whether their seats are still held.
+
+Until milestone 4 adds Stripe, a held booking simply expires. Nothing is charged.
+
 ## Apply migrations to the dev project
 
 Migrations live in `supabase/migrations` and run in filename order. The Supabase CLI pushes them straight to the hosted dev project, so Docker is not needed.
@@ -82,7 +94,7 @@ npx supabase db push
 
 `--dry-run` lists what would be applied. Read it before the real push, and check the project ref is the dev project. To add a migration, run `npx supabase migration new <name>` and fill in the file it creates; do not edit one that has been applied.
 
-The dev project is "Bookings" (ref `pvfnlahywytptizpgkwo`). The eight migrations in this folder are already applied there, and the filenames match the versions recorded in the database, so `db push` only sends new ones.
+The dev project is "Bookings" (ref `pvfnlahywytptizpgkwo`). The nine migrations in this folder are already applied there, and the filenames match the versions recorded in the database, so `db push` only sends new ones.
 
 ## Hosting on Netlify
 
@@ -108,6 +120,17 @@ npm run audit
 
 CI runs all of these on every pull request.
 
+Two more checks need the dev database, so they run locally, not in CI:
+
+```powershell
+npm run test:race
+npm run test:e2e
+```
+
+- `npm run test:race` fires 20 bookings at once at a departure with one seat, on the real database, and fails unless exactly one gets a hold. It proves the row lock; the in-process test database cannot, because it runs one statement at a time.
+- `npm run test:e2e` drives the booking form in a real browser (Playwright). First time only: `npx playwright install chromium`.
+- Both create private throwaway departures and delete them afterward. Both need at least one published policy version.
+
 - `npm test` runs the unit tests and the database tests. The database tests apply every migration to an in-process Postgres (PGlite) and check constraints and row-level security, including that **every table has RLS enabled and forced**. A new table without RLS fails CI. No database or Docker is needed.
 - `npm run check:env` fails if any browser-exposed environment variable name appears in the repo.
 - `npm run check:build` runs after the build and fails if the local-only staff shortcut reached the built app.
@@ -119,20 +142,22 @@ CI runs all of these on every pull request.
 |---|---|
 | `astro.config.ts` | Astro config and the environment variable schema |
 | `netlify.toml` | Netlify build settings and static-file headers |
-| `src/pages/` | Routes: the placeholder home page and `/admin` |
+| `src/pages/` | Routes: the departure list, the booking form (`[trip]/[departure]`), the traveler's booking page (`booking/[reference]`) and `/admin` |
 | `src/pages/admin/auth/` | Google sign-in start and callback |
-| `src/actions/` | Admin form actions. Each one checks the staff role itself |
+| `src/actions/` | Form actions: the public booking form, and the admin actions, each of which checks the staff role itself |
 | `src/layouts/`, `src/components/` | Page shells and form pieces |
 | `src/styles/global.css` | Tailwind and the trip-page palette |
 | `src/middleware.ts` | Security headers and the staff gate |
 | `src/lib/auth/` | Who counts as staff, and resolving the signed-in staff member |
 | `src/lib/admin/db.ts` | Admin data access (service role, after the role check) |
+| `src/lib/bookings/` | Booking form validation, payment plan, access tokens, and the calls to the booking SQL functions |
 | `src/lib/departures/`, `src/lib/policies/`, `src/lib/trips/` | Form parsing and trip feed logic, with tests |
 | `src/lib/money.ts`, `src/lib/dates.ts` | Integer-cents and calendar-date helpers |
 | `src/lib/schemas/` | Shared Zod building blocks |
 | `src/lib/supabase/` | Server clients: anon (RLS applies) and service role (bypasses RLS) |
 | `supabase/migrations/` | Schema, constraints, RLS policies and grants |
 | `tests/db/` | Database tests and the PGlite harness |
+| `tests/e2e/` | Playwright tests for the booking form |
 | `scripts/` | CI helper scripts |
 
 ## Rules

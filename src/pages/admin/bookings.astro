@@ -1,0 +1,96 @@
+---
+import Admin from "../../layouts/Admin.astro";
+import { listBookings } from "../../lib/admin/db";
+import { formatDateRange } from "../../lib/dates";
+import { formatUsd } from "../../lib/money";
+
+// Read-only for now. Booking detail, refunds and exports arrive in milestone 6.
+const bookings = await listBookings();
+const now = Date.now();
+
+const STATUS_LABEL = {
+  pending: "Pending",
+  deposit_paid: "Deposit paid",
+  paid_in_full: "Paid in full",
+  canceled: "Canceled",
+  refunded: "Refunded",
+} as const;
+
+const created = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+  timeZone: "America/New_York",
+  timeZoneName: "short",
+});
+
+function holdNote(booking: (typeof bookings)[number]): string {
+  if (booking.status !== "pending") return "";
+  if (!booking.seat_holds) return "no hold";
+  const minutes = Math.ceil((Date.parse(booking.seat_holds.expires_at) - now) / 60_000);
+  return minutes > 0 ? `seats held, ${minutes} min left` : "hold ended, seats released";
+}
+---
+
+<Admin title="Bookings">
+  <p class="-mt-4 mb-8 max-w-prose text-sm text-warm-mid">
+    Newest first. A pending booking holds its seats for 30 minutes; after that they are free
+    again without anyone doing anything.
+  </p>
+
+  <div class="overflow-x-auto">
+    <table class="w-full min-w-[52rem] text-left text-sm">
+      <thead class="border-b border-warm-light text-xs uppercase tracking-wider text-warm-mid">
+        <tr>
+          <th scope="col" class="py-2 pr-4 font-medium">Reference</th>
+          <th scope="col" class="py-2 pr-4 font-medium">Departure</th>
+          <th scope="col" class="py-2 pr-4 font-medium">Lead traveler</th>
+          <th scope="col" class="py-2 pr-4 font-medium">Travelers</th>
+          <th scope="col" class="py-2 pr-4 font-medium">Total</th>
+          <th scope="col" class="py-2 pr-4 font-medium">Status</th>
+          <th scope="col" class="py-2 font-medium">Created</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-cream-dark">
+        {
+          bookings.map((b) => {
+            const lead = b.travelers.find((t) => t.is_lead);
+            const note = holdNote(b);
+            return (
+              <tr>
+                <td class="py-3 pr-4 font-medium text-dark">{b.reference}</td>
+                <td class="py-3 pr-4">
+                  {b.departures?.trips?.title ?? "Unknown trip"}
+                  {b.departures && (
+                    <span class="block text-xs text-warm-mid">
+                      {formatDateRange(b.departures.start_date, b.departures.end_date)}
+                    </span>
+                  )}
+                </td>
+                <td class="py-3 pr-4">
+                  {lead ? `${lead.first_name} ${lead.last_name}` : "Unknown"}
+                  {lead?.email && <span class="block text-xs text-warm-mid">{lead.email}</span>}
+                </td>
+                <td class="py-3 pr-4">{b.traveler_count}</td>
+                <td class="py-3 pr-4">{formatUsd(b.total_cents)}</td>
+                <td class="py-3 pr-4">
+                  {STATUS_LABEL[b.status]}
+                  {note && <span class="block text-xs text-warm-mid">{note}</span>}
+                </td>
+                <td class="py-3 whitespace-nowrap">{created.format(new Date(b.created_at))}</td>
+              </tr>
+            );
+          })
+        }
+        {
+          bookings.length === 0 && (
+            <tr>
+              <td colspan="7" class="py-6 text-warm-mid">No bookings yet.</td>
+            </tr>
+          )
+        }
+      </tbody>
+    </table>
+  </div>
+</Admin>

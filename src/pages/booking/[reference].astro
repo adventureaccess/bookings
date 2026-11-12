@@ -1,0 +1,121 @@
+---
+import Public from "../../layouts/Public.astro";
+import { getBookingSummary } from "../../lib/bookings/db";
+import { hashAccessToken, isAccessToken } from "../../lib/bookings/token";
+import { formatDateRange } from "../../lib/dates";
+import { formatUsd } from "../../lib/money";
+import { bookingReference } from "../../lib/schemas";
+
+// A traveler's own booking: /booking/<reference>?t=<access token>. Both are
+// needed. A wrong or missing token looks exactly like a booking that does
+// not exist.
+Astro.response.headers.set("Cache-Control", "no-store");
+
+const reference = Astro.params.reference ?? "";
+const token = Astro.url.searchParams.get("t") ?? "";
+if (!bookingReference.safeParse(reference).success || !isAccessToken(token)) {
+  return Astro.rewrite("/404");
+}
+
+const booking = await getBookingSummary(reference, hashAccessToken(token));
+if (!booking) return Astro.rewrite("/404");
+
+const isPending = booking.status === "pending";
+const held = isPending && booking.hold_active;
+const minutesLeft = booking.hold_expires_at
+  ? Math.max(1, Math.ceil((Date.parse(booking.hold_expires_at) - Date.now()) / 60_000))
+  : 0;
+const seats = booking.traveler_count === 1 ? "seat" : "seats";
+// A private departure's key is not kept with the booking, so only public
+// departures get a link back to the form.
+const formPath = booking.is_private
+  ? null
+  : `/${booking.trip_slug}/${booking.departure_id}?travelers=${booking.traveler_count}`;
+
+const heading = held
+  ? `Your ${seats} ${booking.traveler_count === 1 ? "is" : "are"} held.`
+  : isPending
+    ? "Your hold has ended."
+    : booking.status === "canceled" || booking.status === "refunded"
+      ? "This booking is canceled."
+      : "Your booking is confirmed.";
+---
+
+<Public title={`Booking ${booking.reference}`}>
+  <p class="text-xs font-medium uppercase tracking-[0.3em] text-orange">
+    Booking {booking.reference}
+  </p>
+  <h1 class="mt-3 text-5xl font-light" data-testid="booking-heading">{heading}</h1>
+
+  <div class="mt-8 max-w-2xl space-y-6">
+    {
+      held && (
+        <p class="text-lg text-charcoal" data-testid="hold-note">
+          {booking.lead_first_name ? `Thank you, ${booking.lead_first_name}. ` : ""}
+          We are holding {booking.traveler_count} {seats} for the next {minutesLeft}{" "}
+          {minutesLeft === 1 ? "minute" : "minutes"}. Online payment is not open yet, so nothing
+          has been charged. To complete the booking, write to info@adventure-access.com with
+          your reference.
+        </p>
+      )
+    }
+    {
+      isPending && !held && (
+        <p class="text-lg text-charcoal">
+          The {seats} we were holding have been released. Nothing was charged. If there is still
+          room, you can book again.
+        </p>
+      )
+    }
+
+    <dl class="divide-y divide-cream-dark border-y border-cream-dark text-sm">
+      <div class="flex justify-between gap-4 py-2.5">
+        <dt class="text-warm-mid">Trip</dt>
+        <dd class="text-dark">{booking.trip_title}</dd>
+      </div>
+      <div class="flex justify-between gap-4 py-2.5">
+        <dt class="text-warm-mid">Dates</dt>
+        <dd class="text-dark">{formatDateRange(booking.start_date, booking.end_date)}</dd>
+      </div>
+      <div class="flex justify-between gap-4 py-2.5">
+        <dt class="text-warm-mid">Travelers</dt>
+        <dd class="text-dark">{booking.traveler_count}</dd>
+      </div>
+      <div class="flex justify-between gap-4 py-2.5">
+        <dt class="text-warm-mid">Total</dt>
+        <dd class="text-dark">{formatUsd(booking.total_cents)}</dd>
+      </div>
+      {
+        isPending && (
+          <div class="flex justify-between gap-4 py-2.5">
+            <dt class="text-warm-mid">Deposit to confirm</dt>
+            <dd class="text-dark">{formatUsd(booking.deposit_due_cents)}</dd>
+          </div>
+        )
+      }
+      <div class="flex justify-between gap-4 py-2.5">
+        <dt class="text-warm-mid">Reference</dt>
+        <dd class="font-medium text-dark" data-testid="booking-reference">{booking.reference}</dd>
+      </div>
+    </dl>
+
+    {
+      isPending && formPath && (
+        <p class="text-sm">
+          <a class="text-dark underline decoration-orange underline-offset-4" href={formPath}>
+            {held ? "Change traveler details" : "Book again"}
+          </a>
+          {held && (
+            <span class="text-warm-mid">
+              {" "}
+              You will need to enter them again. Your hold carries over.
+            </span>
+          )}
+        </p>
+      )
+    }
+    <p class="text-xs text-warm-mid">
+      Keep this page's address. It is the only way back to this booking.
+    </p>
+  </div>
+</Public>

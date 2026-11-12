@@ -1,0 +1,35 @@
+---
+import type { PaymentPlan } from "../lib/bookings/plan";
+import { formatDate } from "../lib/dates";
+import { formatUsd } from "../lib/money";
+
+/** What the party pays and when. Amounts come from the server, never the form. */
+interface Props {
+  plan: PaymentPlan;
+  travelers: number;
+}
+
+const { plan, travelers } = Astro.props;
+---
+
+<dl class="divide-y divide-cream-dark border-y border-cream-dark text-sm">
+  {
+    plan.lines.map((line) => (
+      <div class="flex items-baseline justify-between gap-4 py-2.5">
+        <dt>
+          <span class="text-dark">{line.label}</span>
+          <span class="block text-xs text-warm-mid">
+            {line.due_date ? `Due ${formatDate(line.due_date)}` : "Due when you book"}
+          </span>
+        </dt>
+        <dd class="text-dark">{formatUsd(line.amount_cents)}</dd>
+      </div>
+    ))
+  }
+  <div class="flex items-baseline justify-between gap-4 py-2.5 font-medium">
+    <dt class="text-dark">
+      {`Total for ${travelers} ${travelers === 1 ? "traveler" : "travelers"}`}
+    </dt>
+    <dd class="text-dark" data-testid="plan-total">{formatUsd(plan.total_cents)}</dd>
+  </div>
+</dl>

@@ -1,0 +1,39 @@
+---
+import Base from "./Base.astro";
+
+interface Props {
+  title?: string;
+  description?: string;
+}
+
+const { title, description } = Astro.props;
+---
+
+<Base title={title} description={description}>
+  <header class="border-b border-cream-dark">
+    <div class="mx-auto flex max-w-5xl items-center justify-between px-6 py-5">
+      <a href="/" class="text-xs font-medium uppercase tracking-[0.3em] text-orange">
+        Adventure Access
+      </a>
+      <a
+        href="https://adventure-access.com"
+        class="text-sm text-warm-mid underline underline-offset-4 hover:text-dark"
+      >
+        Back to the website
+      </a>
+    </div>
+  </header>
+
+  <main class="mx-auto w-full max-w-5xl flex-1 px-6 py-12">
+    <slot />
+  </main>
+
+  <footer class="border-t border-cream-dark">
+    <p class="mx-auto max-w-5xl px-6 py-6 text-xs text-warm-mid">
+      Questions about a booking? Write to{" "}
+      <a class="underline underline-offset-4" href="mailto:info@adventure-access.com"
+        >info@adventure-access.com</a
+      >.
+    </p>
+  </footer>
+</Base>

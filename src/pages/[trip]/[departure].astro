@@ -1,0 +1,261 @@
+---
+import { actions } from "astro:actions";
+import Field from "../../components/Field.astro";
+import Notice from "../../components/Notice.astro";
+import PaymentPlan from "../../components/PaymentPlan.astro";
+import PolicyText from "../../components/PolicyText.astro";
+import Public from "../../layouts/Public.astro";
+import { getDepartureForBooking, HOLD_MINUTES } from "../../lib/bookings/db";
+import { HONEYPOT_FIELD, MAX_PARTY, partySize, readQuestions } from "../../lib/bookings/form";
+import { paymentPlan } from "../../lib/bookings/plan";
+import { formatDateRange } from "../../lib/dates";
+import { formatUsd } from "../../lib/money";
+
+// The booking page for one departure: /<trip-slug>/<departure-id>, plus
+// ?key=<token> for a private departure. Never cached: seats change.
+Astro.response.headers.set("Cache-Control", "no-store");
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const departureId = Astro.params.departure ?? "";
+if (!UUID.test(departureId)) return Astro.rewrite("/404");
+
+const rawKey = Astro.url.searchParams.get("key");
+const key = rawKey && /^[A-Za-z0-9_-]{1,64}$/.test(rawKey) ? rawKey : null;
+
+const result = Astro.getActionResult(actions.createBooking);
+if (result?.data?.ok) {
+  return Astro.redirect(`/booking/${result.data.reference}?t=${result.data.token}`);
+}
+
+const departure = await getDepartureForBooking(departureId, key);
+if (!departure || departure.trip_slug !== Astro.params.trip) return Astro.rewrite("/404");
+
+const failed = result?.data && !result.data.ok ? result.data : null;
+const values = failed?.values ?? {};
+const errors = failed?.errors ?? {};
+const hasFieldErrors = Object.keys(errors).length > 0;
+
+const policy = departure.policy;
+const isFull = departure.status === "full" || departure.seats_left < 1;
+const canBook = !isFull && !departure.is_past && policy !== null;
+
+const questions = readQuestions(departure.custom_questions);
+const largestParty = Math.max(1, Math.min(MAX_PARTY, departure.seats_left));
+const count = partySize(
+  values.travelers ?? Astro.url.searchParams.get("travelers"),
+  departure.seats_left,
+);
+const plan = paymentPlan(departure, count);
+const dates = formatDateRange(departure.start_date, departure.end_date);
+
+// Posting keeps the key in the address, so a private departure can be shown
+// again if the form comes back with errors.
+const postQuery = new URLSearchParams({ _action: "createBooking" });
+if (key) postQuery.set("key", key);
+const postUrl = `${Astro.url.pathname}?${postQuery}`;
+
+const input = "w-full border border-warm-light bg-white px-3 py-2 text-charcoal";
+const value = (name: string) => values[name] ?? "";
+const describedBy = (name: string, hasHelp = false) =>
+  errors[name] ? `${name}-error` : hasHelp ? `${name}-help` : undefined;
+---
+
+<Public title={`Book ${departure.trip_title}`}>
+  <p class="text-xs font-medium uppercase tracking-[0.3em] text-orange">Book your place</p>
+  <h1 class="mt-3 text-5xl font-light">{departure.trip_title}</h1>
+  <p class="mt-3 text-lg text-warm-mid">{dates}</p>
+
+  <div class="mt-10 grid gap-12 lg:grid-cols-[1fr_20rem]">
+    <div>
+      {result?.error && <Notice kind="error">{result.error.message}</Notice>}
+      {failed?.message && <Notice kind="error">{failed.message}</Notice>}
+      {
+        hasFieldErrors && (
+          <Notice kind="error">Some fields need attention. Nothing has been held yet.</Notice>
+        )
+      }
+
+      {
+        !canBook || !policy ? (
+          <div data-testid="not-bookable">
+            <h2 class="text-3xl">
+              {isFull && !departure.is_past
+                ? "This departure is full."
+                : "This departure is not open for booking."}
+            </h2>
+            <p class="mt-4 max-w-prose text-warm-mid">
+              {isFull && !departure.is_past
+                ? "Every seat is taken or being held. Seats that are not paid for are released after a short while, so it can be worth checking again."
+                : "It may have already started, or booking has not opened yet."}{" "}
+              Write to{" "}
+              <a class="text-dark underline decoration-orange underline-offset-4" href="mailto:info@adventure-access.com">
+                info@adventure-access.com
+              </a>{" "}
+              and we will help.
+            </p>
+            <p class="mt-6">
+              <a class="text-dark underline decoration-orange underline-offset-4" href="/">
+                See other departures
+              </a>
+            </p>
+          </div>
+        ) : (
+          <>
+            <form method="GET" class="flex flex-wrap items-end gap-4 border-b border-cream-dark pb-8">
+              {key && <input type="hidden" name="key" value={key} />}
+              <div>
+                <label for="party" class="block text-sm font-medium text-dark">
+                  How many travelers?
+                </label>
+                <select id="party" name="travelers" class={`${input} mt-1 w-28`}>
+                  {
+                    Array.from({ length: largestParty }, (_, i) => i + 1).map((n) => (
+                      <option value={n} selected={n === count}>
+                        {n}
+                      </option>
+                    ))
+                  }
+                </select>
+              </div>
+              <button type="submit" class="cursor-pointer border border-dark px-5 py-2 text-sm font-medium uppercase tracking-[0.15em] text-dark transition-colors hover:bg-dark hover:text-white">
+                Update
+              </button>
+              <p class="basis-full text-xs text-warm-mid">
+                {departure.seats_left === 1
+                  ? "1 seat left."
+                  : `${departure.seats_left} seats left.`}
+                {" "}Choose the number first: changing it clears the form below.
+                {errors.travelers && (
+                  <span role="alert" class="block font-medium text-orange">{errors.travelers}</span>
+                )}
+              </p>
+            </form>
+
+            <form method="POST" action={postUrl} class="mt-8 space-y-10" novalidate>
+              <input type="hidden" name="departure_id" value={departure.id} />
+              {key && <input type="hidden" name="key" value={key} />}
+              <input type="hidden" name="travelers" value={count} />
+              <input type="hidden" name="policy_version_id" value={policy.id} />
+              <div class="hidden" aria-hidden="true">
+                <label>
+                  Leave this empty
+                  <input type="text" name={HONEYPOT_FIELD} tabindex="-1" autocomplete="off" />
+                </label>
+              </div>
+
+              {
+                Array.from({ length: count }, (_, i) => i + 1).map((n) => (
+                  <fieldset class="space-y-5">
+                    <legend class="font-serif text-2xl text-dark">
+                      {n === 1 ? (count === 1 ? "Your details" : "Lead traveler") : `Traveler ${n}`}
+                    </legend>
+                    {n === 1 && count > 1 && (
+                      <p class="text-sm text-warm-mid">
+                        The lead traveler is our contact for this booking and receives the
+                        confirmation.
+                      </p>
+                    )}
+                    <div class="grid gap-5 sm:grid-cols-2">
+                      <Field name={`t${n}_first_name`} label="First name" error={errors[`t${n}_first_name`]}>
+                        <input id={`t${n}_first_name`} name={`t${n}_first_name`} type="text" maxlength="80" value={value(`t${n}_first_name`)} autocomplete={n === 1 ? "given-name" : "off"} class={input} required aria-describedby={describedBy(`t${n}_first_name`)} />
+                      </Field>
+                      <Field name={`t${n}_last_name`} label="Last name" error={errors[`t${n}_last_name`]}>
+                        <input id={`t${n}_last_name`} name={`t${n}_last_name`} type="text" maxlength="80" value={value(`t${n}_last_name`)} autocomplete={n === 1 ? "family-name" : "off"} class={input} required aria-describedby={describedBy(`t${n}_last_name`)} />
+                      </Field>
+                    </div>
+                    <div class="grid gap-5 sm:grid-cols-2">
+                      <Field
+                        name={`t${n}_email`}
+                        label={n === 1 ? "Email" : "Email (optional)"}
+                        help={n === 1 ? "Your confirmation goes here." : undefined}
+                        error={errors[`t${n}_email`]}
+                      >
+                        <input id={`t${n}_email`} name={`t${n}_email`} type="email" maxlength="254" value={value(`t${n}_email`)} autocomplete={n === 1 ? "email" : "off"} class={input} required={n === 1} aria-describedby={describedBy(`t${n}_email`, n === 1)} />
+                      </Field>
+                      {n === 1 && (
+                        <Field name="t1_phone" label="Phone" help="With country code if outside the US." error={errors.t1_phone}>
+                          <input id="t1_phone" name="t1_phone" type="tel" maxlength="32" value={value("t1_phone")} autocomplete="tel" class={input} required aria-describedby={describedBy("t1_phone", true)} />
+                        </Field>
+                      )}
+                    </div>
+                    {questions.map((question) => (
+                      <Field name={`t${n}_${question.id}`} label={question.label} error={errors[`t${n}_${question.id}`]}>
+                        <input id={`t${n}_${question.id}`} name={`t${n}_${question.id}`} type="text" maxlength="200" value={value(`t${n}_${question.id}`)} autocomplete="off" class={input} aria-describedby={describedBy(`t${n}_${question.id}`)} />
+                      </Field>
+                    ))}
+                  </fieldset>
+                ))
+              }
+
+              <section class="space-y-4">
+                <h2 class="text-2xl">Booking terms</h2>
+                <details class="border border-cream-dark bg-white">
+                  <summary class="cursor-pointer px-4 py-3 text-sm text-dark underline underline-offset-4">
+                    Read the {policy.title}
+                  </summary>
+                  <div class="max-h-96 overflow-y-auto border-t border-cream-dark px-4 py-4">
+                    <PolicyText body={policy.body_md} />
+                  </div>
+                </details>
+                <div>
+                  <label class="flex items-start gap-3 text-sm text-charcoal">
+                    <input type="checkbox" name="accept_policy" value="yes" checked={value("accept_policy") === "yes"} class="mt-1 size-4 accent-orange" required aria-describedby={errors.accept_policy ? "accept_policy-error" : undefined} />
+                    <span>
+                      I have read and accept the {policy.title}
+                      {count > 1 ? ", for myself and on behalf of everyone in my party." : "."}
+                    </span>
+                  </label>
+                  {errors.accept_policy && (
+                    <p id="accept_policy-error" role="alert" class="mt-1 text-xs font-medium text-orange">
+                      {errors.accept_policy}
+                    </p>
+                  )}
+                </div>
+              </section>
+
+              <div>
+                <button type="submit" class="cursor-pointer bg-dark px-10 py-3 text-sm font-medium uppercase tracking-[0.15em] text-white transition-colors hover:bg-orange">
+                  Hold {count === 1 ? "my seat" : `${count} seats`}
+                </button>
+                <p class="mt-3 text-xs text-warm-mid">
+                  We hold {count === 1 ? "your seat" : "your seats"} for {HOLD_MINUTES} minutes.
+                  Nothing is charged on this page.
+                </p>
+              </div>
+            </form>
+          </>
+        )
+      }
+    </div>
+
+    <aside class="order-first space-y-6 lg:order-last">
+      {
+        departure.hero_image_url && (
+          <img src={departure.hero_image_url} alt="" width="640" height="420" loading="lazy" class="hidden aspect-[3/2] w-full object-cover lg:block" />
+        )
+      }
+      <div>
+        <h2 class="hidden text-2xl lg:block">{departure.trip_title}</h2>
+        <p class="mt-1 hidden text-sm text-warm-mid lg:block">{dates}</p>
+        <p class="mt-3 text-sm text-charcoal">
+          {formatUsd(departure.price_cents)} per person
+        </p>
+      </div>
+      {
+        canBook && (
+          <div>
+            <h3 class="text-xl">Payments</h3>
+            <div class="mt-2">
+              <PaymentPlan plan={plan} travelers={count} />
+            </div>
+            {count === 1 && (
+              <p class="mt-3 text-xs text-warm-mid">
+                Prices are per person sharing a room. We will confirm rooming with you.
+              </p>
+            )}
+          </div>
+        )
+      }
+    </aside>
+  </div>
+</Public>
