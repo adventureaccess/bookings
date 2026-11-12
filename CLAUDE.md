@@ -25,7 +25,7 @@ Source brief: Will, Nov 10, 2026. Amendments from the Nov 10 review are marked *
 | App | Astro (server output), TypeScript strict, Tailwind | Astro Actions for forms, endpoints in `src/pages/api` for webhooks and cron, middleware for the staff gate. Pages are plain HTML with no client framework; add an island only where a screen needs it. No client-side secrets. Switched from Next.js on Nov 11, 2026, to match the website and run natively on Netlify |
 | Hosting | Netlify, `book.adventure-access.com` | Its own Netlify site, separate from the marketing site, same team. Deploy Preview per PR; production from `main` only. Server routes run as Netlify Functions through `@astrojs/netlify`. Switched from Vercel on Nov 11, 2026 |
 | Database | Supabase Postgres | Migrations in `supabase/migrations`; row-level security on every table |
-| Files | A restricted Google Shared Drive in the company Workspace **(Nov 12, default; Will to confirm)** | Traveler documents only. The app uploads through a service account and keeps only the file ID. Staff open files in Drive with their own Google sign-in. Sharing outside the company is switched off on the drive |
+| Files | A restricted Google Shared Drive in the company Workspace **(Will, Nov 12)** | Traveler documents only. The app uploads through a service account and keeps only the file ID. Staff open files in Drive with their own Google sign-in. Sharing outside the company is switched off on the drive |
 | Staff login | Supabase Auth, Google sign-in, `@adventure-access.com` only | `staff` allowlist table with roles |
 | Payments | Stripe Checkout (hosted), webhooks; offline payments recorded by staff **(Nov 12)** | The webhook is the only thing that marks card money as paid |
 | CRM | HubSpot private app token, CRM v3 API | Contacts, deals, associations |
@@ -60,8 +60,8 @@ Money is integer cents with a `currency` column (always `usd`). Every table has 
 - `travelers`: booking_id, first_name, last_name, email (required for the lead only **(review)**), phone, is_lead, answers jsonb, hubspot_contact_id
 - `seat_holds`: departure_id, booking_id, seats, expires_at
 - `payments`: booking_id, stripe_checkout_session_id, stripe_payment_intent_id, stripe_refund_id, amount_cents, kind (deposit, balance, refund), status. **(Nov 12)** method (card, wire, ach, check, cash, credit, other), fee_cents (card fee charged on top; not counted toward the trip), received_on, note, recorded_by, voided_at, void_reason. Card rows are written only by the webhook, refunds included **(review)**; offline rows only by an admin action
-- `traveler_documents` **(Nov 12)**: booking_id, traveler_id, kind (insurance), drive_file_id, file_name, status (submitted, accepted, rejected), reviewed_by, reviewed_at, note
-- `waiver_versions` and `waiver_acceptances` **(Nov 12)**: the waiver text, versioned and immutable once published like a policy, and each traveler's own acceptance (typed full name, accepted_at, ip, user_agent)
+- `traveler_documents` **(Nov 12)**: booking_id, traveler_id, kind (insurance, passport), drive_file_id, file_name, status (submitted, accepted, rejected), reviewed_by, reviewed_at, note
+- `waiver_versions` and `waiver_acceptances` **(Nov 12)**: the waiver PDF, versioned and immutable once published like a policy, and each traveler's own acceptance (typed full name, accepted_at, ip, user_agent)
 - `policy_versions`: title, body_md, version, published_at. Immutable once published
 - `policy_acceptances`: booking_id, traveler_id, policy_version_id, accepted_at, ip, user_agent
 - `staff`: email, role (admin, staff, read_only)
@@ -79,7 +79,7 @@ Seats available = max_travelers − confirmed travelers − unexpired holds. Che
 - **Same price for everyone on a departure (Will, Nov 12).** No per-person prices or dates. A different arrangement for one traveler is a credit on their booking, or its own departure.
 - **Everyone pays for themselves (Will, Nov 12).** Each booking has its own balance, payments and credits. One person paying for dependents registers them on their own booking.
 - **Two ways money is recorded (Will, Nov 12).** The Stripe webhook is the only path that marks card money paid or refunded. Offline payments (wire, ACH, check, cash, credit) are recorded by an admin or staff role in the admin: method, amount, date received and a note, logged with who. An offline payment is never deleted; it is voided with a reason. Both paths update `paid_cents` and the booking status through the same code.
-- **Card fee (Will, Nov 12).** One percentage for the whole system, typed in by an admin in settings; zero allowed. Not set per departure. A change applies to payments started after it. It is added to card payments only, shown to the traveler as its own line before they pay, sent to Stripe as a second line item, and stored in `fee_cents`. It never counts toward the trip price or `paid_cents`. Card surcharges have legal limits in some places; Will to confirm with the accountant before live mode.
+- **Card fee (Will, Nov 12).** One percentage for the whole system, typed in by an admin in settings; zero allowed. Not set per departure. A change applies to payments started after it. It is added to card payments only, shown to the traveler as its own line before they pay, sent to Stripe as a second line item, and stored in `fee_cents`. It never counts toward the trip price or `paid_cents`. Will is handling whether and how the surcharge may be charged; build it regardless.
 - What a traveler can pay by card: the deposit (`deposit_cents × travelers`) first, then the next scheduled payment or the whole remaining balance. Checkout in payment mode, `customer_creation: always`, booking reference and IDs in metadata.
 - Milestone payments (Will, Nov 11, 2026): each departure may set its own schedule of payments between the deposit and the final balance, in `payment_schedule`. Amounts are fixed cents per person; each is due before `balance_due_date`; deposit plus scheduled payments never exceed the price. No automatic charges or reminders.
 - Final balance = `total_cents − discount_cents − paid_cents`, due on the departure's `balance_due_date`, which staff set on each departure **(Will, Nov 12)**.
@@ -92,11 +92,12 @@ Seats available = max_travelers − confirmed travelers − unexpired holds. Che
 
 ## Documents (Nov 12)
 
-- v1 handles two: **proof of travel insurance** (a file the traveler uploads) and the **waiver** (accepted in the app). Anything else (passport copies, visas, flights) is undecided and not built; see Open items.
-- **Each traveler handles their own (Will, Nov 12)**, on their own booking page: their upload, their waiver. A person who registered dependents does it for each of them.
-- The waiver is versioned text like a policy. Accepting it records the traveler's typed full name, the time, IP and browser against that version.
+- v1 handles three: **proof of travel insurance** and a **passport copy** (files the traveler uploads), and the **waiver**, the Travel Consent and Release of Liability form (signed in the app). Visas and flights are undecided and not built.
+- **Passports are required (Will, Nov 12).** Collecting them here replaces sending them by email. A passport copy is only ever a file in the restricted Shared Drive: no passport number, date of birth or other detail from it is typed into or stored in the database.
+- **Each traveler handles their own (Will, Nov 12)**, on their own booking page: their uploads, their waiver. A person who registered dependents does it for each of them.
+- The waiver is a PDF Will provides, kept as a version that cannot change once published. The traveler opens it and signs in the app: their typed full name, the time, IP and browser are recorded against that version.
 - Uploads: PDF, JPG or PNG, 10 MB at most, type checked on the server from the file's contents.
-- **Where files live (default; Will to confirm).** A Google Shared Drive in the company Workspace, restricted to staff, with sharing outside the company switched off. The app uploads through a service account that can only add files to that drive, names each file by booking reference and document kind, and stores only the Drive file ID. Files are never kept in the app's database or on Netlify. Staff open them in Drive with their own Google sign-in; the admin links to them. The traveler sees "received", "accepted" or "rejected", not the file.
+- **Where files live (Will, Nov 12).** A Google Shared Drive in the company Workspace, restricted to staff, with sharing outside the company switched off. The app uploads through a service account that can only add files to that drive, names each file by booking reference and document kind, and stores only the Drive file ID. Files are never kept in the app's database or on Netlify. Staff open them in Drive with their own Google sign-in; the admin links to them. The traveler sees "received", "accepted" or "rejected", not the file.
 - Staff mark each document accepted or rejected with a note. The booking page shows the traveler what is still needed.
 - Documents are personal data: never in logs, emails or HubSpot. Only a "documents complete" flag leaves this app.
 
@@ -110,7 +111,7 @@ Seats available = max_travelers − confirmed travelers − unexpired holds. Che
 - Document files are private **(Nov 12)**: they go straight to the restricted Shared Drive and are read only by staff signed in to Google. The app never serves a document back to a browser. The service account key is a server-only secret with access to that one drive.
 - Zod on every field with length caps. Honeypot plus Cloudflare Turnstile on the booking form. Rate limits on form posts, uploads and webhook-adjacent routes (Postgres-backed).
 - Headers: strict CSP (allow Stripe and Turnstile), HSTS, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`.
-- No passport numbers, dates of birth, medical or dietary details in v1. Do not add a passport upload without Will's decision.
+- Passport copies are collected as files in the restricted Shared Drive **(Will, Nov 12)**. No passport numbers, dates of birth, medical or dietary details are typed into or stored in the database.
 - Cron and internal routes require a shared secret header.
 - Pinned dependency versions, Dependabot on, `npm audit` clean at high and critical before merge.
 - Logs never include full emails, phone numbers or tokens.
@@ -138,21 +139,21 @@ One branch and PR per milestone, each with a preview deploy. Stop after each one
 3. **Booking form and holds.** Built; in review. Departure list, form with custom questions, policy acceptance, pending booking plus hold, capacity checks. It already defaults to one traveler per booking; the wording shifts to "register yourself" in milestone 5.
 4. **Payments.** The system-wide card fee setting, card payment through Stripe Checkout with the fee, webhook with signature check and idempotency, offline payments and voids, credits, the booking page showing what is paid and owed with a pay button, success and canceled pages, hold cleanup cron, and the final balance date made a required field on every departure. Done when a test-mode card payment including the fee reaches `deposit_paid`, replaying the webhook changes nothing, a tampered amount is impossible, and after staff record a wire and a credit the balance is right.
 5. **Group itinerary and roster.** Itinerary on a departure, copied from the tour or from another departure and edited in the admin; group name; the group's page showing itinerary, price and schedule above the registration form; a roster in the admin showing each traveler in the group with what they have paid, what they owe and their documents. Done when Will builds a Ladakh group trip from the library tour, changes two days, the private link shows that group's itinerary, and two people who register separately both appear on the roster.
-6. **Documents.** Each traveler's insurance upload and waiver on their own booking page, staff review, files in the restricted Shared Drive. Done when a traveler uploads insurance and accepts the waiver, the file appears in the Shared Drive and nowhere else, staff reject it with a note, and the traveler sees what is still needed.
+6. **Documents.** Each traveler's insurance and passport uploads and signed waiver on their own booking page, staff review, files in the restricted Shared Drive. Done when a traveler uploads insurance and a passport copy and signs the waiver, the files appear in the Shared Drive and nowhere else, staff reject it with a note, and the traveler sees what is still needed.
 7. **HubSpot and email.** Sync queue and worker, contacts, deal, associations, emails, retry from admin. Done when a test booking appears as a deal with all travelers associated, and a forced HubSpot failure retries and then succeeds.
 8. **Admin finish and launch prep.** Booking detail, activity log, CSV export, security headers, Turnstile, rate limits, README and runbook. Done when the security checklist is ticked and Will approves going live on one pilot group trip.
 
-Not in v1 (design for, don't build): per-person prices or dates, automatic collection of scheduled payments, reminders, AutoPay, late fees, auto-cancel, passport or visa handling, flight details, waitlists, rooming lists, single supplements, affiliates, multi-currency, a traveler mobile app.
+Not in v1 (design for, don't build): per-person prices or dates, automatic collection of scheduled payments, reminders, AutoPay, late fees, auto-cancel, visa handling, flight details, waitlists, rooming lists, single supplements, affiliates, multi-currency, a traveler mobile app.
 
 ## Open decisions (build with the default, flag it in the PR, keep going)
 
 - Deposit: flat per person, set on each departure.
 - Policy version 1 text: start from the website's `/payment-terms-cancellation-policy` page; Will and Brian confirm.
 - Card fee: starts at 3%, as YouLi appears to charge today, until Will types the real number into settings.
-- Waiver: accepted in the app (versioned text, the traveler's typed full name, time, IP), one per traveler. Alternative: upload a signed PDF.
-- Waiver version 1 text: needed from Will or Brian. The website's policy page mentions a "Travel Consent and Release of Liability form".
+- Waiver: Will supplies the Travel Consent PDF. Each traveler signs it in the app (typed full name, time, IP). Alternative: download, sign on paper and upload the signed copy.
 - Dependents: a person may register and pay for dependents on their own booking, and accepts the policy and waiver for each of them.
-- Document storage: a restricted Google Shared Drive (see Documents). Will to confirm and set it up.
+- Document storage: a restricted Google Shared Drive, decided Nov 12. Will sets it up before milestone 6.
+- Document retention: files stay in the Shared Drive until staff delete them. The admin lists trips that ended more than 30 days ago and still have passport copies.
 - Hosting: Netlify (decided Nov 11, 2026). Email: Resend.
 - HubSpot pipeline: reuse an existing one or create "Trip Bookings". Ask first.
 - Pilot: one Ladakh Multisport group trip in 2027.
@@ -162,10 +163,10 @@ Not in v1 (design for, don't build): per-person prices or dates, automatic colle
 ## Open items (need Will or Brian)
 
 - **Trip feed.** The website has no `trips.json`, and all 14 trips are `visibility: internal`, `status: review`. Needed: a filtered public feed (slug, title, destination, hero image, and the itinerary from each trip's `chapters`) and a rule for which trips appear. Until then itineraries are typed or pasted in the admin.
-- **Other documents (Nov 12).** Insurance and the waiver are in. Passport copies, visas and flights are undecided. If passport copies are collected they go to the same restricted Shared Drive and nowhere else; decide who needs them, how long they are kept and who deletes them before building anything.
+- **Other documents (Nov 12).** Insurance, passport copies and the waiver are in. Visas and flights are undecided.
+- **Waiver PDF.** Will to supply the Travel Consent and Release of Liability form before milestone 6.
 - **Google setup for documents (Nov 12).** Will creates the Shared Drive (staff only, external sharing off) and a Google Cloud service account added to it as a contributor, and enters the key in Netlify himself. Do not create either without asking.
-- **Document retention (Nov 12).** How long insurance files and waivers are kept after a trip ends.
-- **Card fee legality (Nov 12).** Confirm with the accountant that a card surcharge is allowed where you charge it, and what must be disclosed.
+- **Document retention (Nov 12).** How long passport copies and insurance files are kept after a trip ends, and who deletes them. See the default under Open decisions.
 - **Policy acceptance.** Settled Nov 12: each traveler registers and accepts for themselves. Only someone registering dependents accepts on their behalf, and the checkbox wording says so.
 - **Solo travelers.** Website prices are double occupancy and single supplements are out of v1. Default: charge the departure price and show "We will confirm rooming with you."
 - **Cron frequency.** Confirm before milestone 4 that the Netlify plan allows a five-minute scheduled function and enough function invocations for it.
