@@ -18,7 +18,7 @@ function form(overrides: Record<string, string> = {}): FormData {
     end_date: "2027-07-22",
     price: "4,950",
     deposit: "750",
-    balance_due_date: "",
+    balance_due_date: "2027-05-11",
     min_travelers: "4",
     max_travelers: "10",
     status: "open",
@@ -60,9 +60,11 @@ describe("parseDepartureForm", () => {
     });
   });
 
-  it("defaults the balance due date to 60 days before departure", () => {
-    const result = parseDepartureForm(form({ start_date: "2027-03-01", end_date: "2027-03-10" }));
-    expect(result.ok && result.data.balance_due_date).toBe("2026-12-31");
+  it("requires a final balance date on every departure, with no default", () => {
+    expect(errorsOf({ balance_due_date: "" }).balance_due_date).toBe(
+      "Enter the date the final balance is due.",
+    );
+    expect(errorsOf({ balance_due_date: "soon" }).balance_due_date).toBeDefined();
   });
 
   it("keeps a balance due date that was typed in", () => {

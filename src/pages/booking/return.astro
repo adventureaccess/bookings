@@ -1,0 +1,28 @@
+---
+import Public from "../../layouts/Public.astro";
+import { recallBooking } from "../../lib/bookings/session";
+
+// Where Stripe sends the traveler back. Stripe is never given the booking's
+// access token, so this page finds the booking from the traveler's own
+// cookie and forwards them to it.
+Astro.response.headers.set("Cache-Control", "no-store");
+
+const outcome = Astro.url.searchParams.get("r") === "paid" ? "paid" : "canceled";
+const booking = recallBooking(Astro.cookies);
+if (booking) {
+  return Astro.redirect(`/booking/${booking.reference}?t=${booking.token}&pay=${outcome}`);
+}
+---
+
+<Public title="Payment">
+  <div class="py-16">
+    <h1 class="text-5xl font-light">
+      {outcome === "paid" ? "Thank you. Your payment went through." : "No payment was taken."}
+    </h1>
+    <p class="mt-6 max-w-prose text-warm-mid">
+      We could not bring you back to your booking page from this browser. Open the link to your
+      booking again to see where it stands, or write to info@adventure-access.com with your
+      booking reference.
+    </p>
+  </div>
+</Public>

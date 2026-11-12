@@ -37,6 +37,8 @@ export default defineConfig({
       // Milestone 4
       STRIPE_SECRET_KEY: envField.string({ ...secret, optional: true }),
       STRIPE_WEBHOOK_SECRET: envField.string({ ...secret, optional: true }),
+      // A live Stripe key is refused unless this is true. Leave it off until launch.
+      STRIPE_LIVE_MODE: envField.boolean({ ...serverPublic, optional: true, default: false }),
       CRON_SECRET: envField.string({ ...secret, optional: true }),
       // Milestone 5
       HUBSPOT_ACCESS_TOKEN: envField.string({ ...secret, optional: true }),

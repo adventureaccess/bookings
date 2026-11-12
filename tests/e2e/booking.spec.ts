@@ -57,6 +57,12 @@ test("a party of two books and their seats are held", async ({ page }) => {
   await expect(page).toHaveURL(/\/booking\/AA-[2-9A-HJ-NP-Z]{4}\?t=/);
   await expect(page.getByTestId("booking-heading")).toHaveText("Your seats are held.");
   await expect(page.getByTestId("hold-note")).toContainText("Thank you, Tenzin.");
+
+  // The booking page shows what is owed and offers the deposit by card.
+  await expect(page.getByTestId("booking-balance")).toHaveText("$9,900");
+  await expect(page.getByRole("heading", { name: "Pay by card" })).toBeVisible();
+  await expect(page.getByText("Deposit: $1,500")).toBeVisible();
+  await expect(page.getByText("Full amount: $9,900")).toBeVisible();
   // The booking page never shows contact details.
   await expect(page.locator("main")).not.toContainText("example.com", { ignoreCase: true });
 

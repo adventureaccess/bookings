@@ -1,12 +1,13 @@
 ---
 import Admin from "../../layouts/Admin.astro";
-import { listDepartures, listPolicies, listTrips } from "../../lib/admin/db";
+import { listDepartures, listMoneyAttention, listPolicies, listTrips } from "../../lib/admin/db";
 import { formatDateRange } from "../../lib/dates";
 
-const [trips, departures, policies] = await Promise.all([
+const [trips, departures, policies, attention] = await Promise.all([
   listTrips(),
   listDepartures(),
   listPolicies(),
+  listMoneyAttention(),
 ]);
 const today = new Date().toISOString().slice(0, 10);
 const upcoming = departures.filter((d) => d.end_date >= today && d.status !== "canceled");
@@ -33,6 +34,31 @@ const cards = [
       ))
     }
   </div>
+
+  {
+    (attention.bookings.length > 0 || attention.failedEvents.length > 0) && (
+      <section class="mt-10 border-l-2 border-orange bg-cream-dark px-5 py-4">
+        <h2 class="text-2xl">Money that needs a look</h2>
+        <ul class="mt-3 list-disc space-y-2 pl-5 text-sm">
+          {attention.bookings.map((b) => (
+            <li>
+              Booking{" "}
+              <a class="underline decoration-orange underline-offset-4" href={`/admin/bookings/${b.id}`}>
+                {b.reference}
+              </a>
+              : its payments and its status do not line up.
+            </li>
+          ))}
+          {attention.failedEvents.map((event) => (
+            <li>
+              A Stripe event could not be recorded ({event.type}): {event.error}. Look it up in
+              Stripe as <span class="font-mono text-xs">{event.stripe_event_id}</span>.
+            </li>
+          ))}
+        </ul>
+      </section>
+    )
+  }
 
   {
     (published.length === 0 || openWithoutPolicy.length > 0) && (

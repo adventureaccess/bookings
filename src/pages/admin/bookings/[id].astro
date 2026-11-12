@@ -1,0 +1,369 @@
+---
+import { actions } from "astro:actions";
+import Notice from "../../../components/Notice.astro";
+import Admin from "../../../layouts/Admin.astro";
+import { getBookingDetail } from "../../../lib/admin/db";
+import { canWrite } from "../../../lib/auth/staff";
+import { formatDate, formatDateRange } from "../../../lib/dates";
+import { formatUsd } from "../../../lib/money";
+import { OFFLINE_METHODS } from "../../../lib/payments/db";
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const id = Astro.params.id ?? "";
+if (!UUID.test(id)) return new Response(null, { status: 404 });
+
+// Each money form posts back to this page. On success, reload it clean so a
+// refresh cannot send the form twice.
+const results = [
+  { result: Astro.getActionResult(actions.recordOfflinePayment), done: "payment" },
+  { result: Astro.getActionResult(actions.voidPayment), done: "voided" },
+  { result: Astro.getActionResult(actions.addCredit), done: "credit" },
+  { result: Astro.getActionResult(actions.markBookingReviewed), done: "reviewed" },
+  { result: Astro.getActionResult(actions.cancelBooking), done: "canceled" },
+];
+for (const { result, done } of results) {
+  if (result?.data?.ok) return Astro.redirect(`/admin/bookings/${id}?done=${done}`);
+}
+const problem = results
+  .map(({ result }) => result?.error?.message ?? (result?.data && !result.data.ok ? result.data.message : null))
+  .find((message) => message);
+
+const booking = await getBookingDetail(id);
+if (!booking) return new Response(null, { status: 404 });
+
+const canEdit = canWrite(Astro.locals.staff);
+const departure = booking.departures;
+const balance = Math.max(booking.total_cents - booking.discount_cents - booking.paid_cents, 0);
+const payments = [...booking.payments].sort((a, b) => a.created_at.localeCompare(b.created_at));
+const credits = [...booking.booking_adjustments].sort((a, b) => a.created_at.localeCompare(b.created_at));
+const travelers = [...booking.travelers].sort((a, b) => Number(b.is_lead) - Number(a.is_lead));
+const today = new Date().toISOString().slice(0, 10);
+const holdMinutes = booking.seat_holds
+  ? Math.ceil((Date.parse(booking.seat_holds.expires_at) - Date.now()) / 60_000)
+  : null;
+
+const FLASH: Record<string, string> = {
+  payment: "Payment recorded.",
+  voided: "Payment voided.",
+  credit: "Credit saved.",
+  reviewed: "Marked as sorted.",
+  canceled: "Booking canceled. Its seats are free again.",
+};
+const flash = Astro.url.searchParams.get("done");
+const STATUS_LABEL = {
+  pending: "Pending",
+  deposit_paid: "Deposit paid",
+  paid_in_full: "Paid in full",
+  canceled: "Canceled",
+  refunded: "Refunded",
+} as const;
+const METHOD_LABEL = {
+  card: "Card (Stripe)",
+  wire: "Wire",
+  ach: "ACH",
+  check: "Check",
+  cash: "Cash",
+  other: "Other",
+} as const;
+const input = "w-full border border-warm-light bg-white px-3 py-2 text-charcoal";
+const button =
+  "cursor-pointer bg-dark px-6 py-2 text-sm font-medium uppercase tracking-[0.15em] text-white transition-colors hover:bg-orange";
+
+const answerText = (answers: unknown): string => {
+  if (!answers || typeof answers !== "object") return "";
+  return Object.values(answers as Record<string, unknown>)
+    .filter((value): value is string => typeof value === "string" && value !== "")
+    .join("; ");
+};
+---
+
+<Admin title={`Booking ${booking.reference}`}>
+  <p class="-mt-4 mb-8 text-warm-mid">
+    {departure?.trips?.title ?? "Unknown trip"}
+    {departure && `, ${formatDateRange(departure.start_date, departure.end_date)}`}
+    {" · "}
+    <a class="underline underline-offset-4" href="/admin/bookings">All bookings</a>
+  </p>
+
+  {flash && FLASH[flash] && <Notice kind="success">{FLASH[flash]}</Notice>}
+  {problem && <Notice kind="error">{problem}</Notice>}
+  {
+    booking.needs_attention && (
+      <Notice kind="error">
+        This booking needs attention. Money and status do not line up: a payment may have arrived
+        after the seats were gone, or been taken back after the place was confirmed.
+      </Notice>
+    )
+  }
+  {
+    booking.needs_attention && canEdit && (
+      <form method="POST" action={actions.markBookingReviewed} class="-mt-2 mb-8">
+        <input type="hidden" name="booking_id" value={booking.id} />
+        <button type="submit" class="cursor-pointer border border-dark px-4 py-1.5 text-xs font-medium uppercase tracking-[0.15em] text-dark hover:bg-dark hover:text-white">
+          It is sorted; clear this notice
+        </button>
+      </form>
+    )
+  }
+
+  <div class="grid gap-10 lg:grid-cols-2">
+    <section>
+      <h2 class="text-2xl">Money</h2>
+      <dl class="mt-3 divide-y divide-cream-dark border-y border-cream-dark text-sm">
+        <div class="flex justify-between gap-4 py-2.5">
+          <dt class="text-warm-mid">Status</dt>
+          <dd class="text-dark" data-testid="status">
+            {STATUS_LABEL[booking.status]}
+            {
+              booking.status === "pending" && holdMinutes !== null && (
+                <span class="text-warm-mid">
+                  {holdMinutes > 0 ? `, seats held ${holdMinutes} min` : ", hold ended"}
+                </span>
+              )
+            }
+          </dd>
+        </div>
+        <div class="flex justify-between gap-4 py-2.5">
+          <dt class="text-warm-mid">
+            Total ({booking.traveler_count} × {departure ? formatUsd(departure.price_cents) : "?"})
+          </dt>
+          <dd class="text-dark">{formatUsd(booking.total_cents)}</dd>
+        </div>
+        <div class="flex justify-between gap-4 py-2.5">
+          <dt class="text-warm-mid">Credits</dt>
+          <dd class="text-dark">{formatUsd(booking.discount_cents)}</dd>
+        </div>
+        <div class="flex justify-between gap-4 py-2.5">
+          <dt class="text-warm-mid">Paid</dt>
+          <dd class="text-dark" data-testid="paid">{formatUsd(booking.paid_cents)}</dd>
+        </div>
+        <div class="flex justify-between gap-4 py-2.5 font-medium">
+          <dt class="text-dark">Balance</dt>
+          <dd class="text-dark" data-testid="balance">{formatUsd(balance)}</dd>
+        </div>
+        {
+          departure && (
+            <div class="flex justify-between gap-4 py-2.5">
+              <dt class="text-warm-mid">Final balance due</dt>
+              <dd class="text-dark">{formatDate(departure.balance_due_date)}</dd>
+            </div>
+          )
+        }
+      </dl>
+    </section>
+
+    <section>
+      <h2 class="text-2xl">Travelers</h2>
+      <ul class="mt-3 divide-y divide-cream-dark border-y border-cream-dark text-sm">
+        {
+          travelers.map((traveler) => (
+            <li class="py-2.5">
+              <span class="text-dark">
+                {traveler.first_name} {traveler.last_name}
+              </span>
+              {traveler.is_lead && <span class="ml-2 bg-cream-dark px-2 py-0.5 text-xs">Registered</span>}
+              <span class="block text-xs text-warm-mid">
+                {[traveler.email, traveler.phone].filter(Boolean).join(" · ") || "No contact details"}
+              </span>
+              {answerText(traveler.answers) && (
+                <span class="block text-xs text-warm-mid">Answers: {answerText(traveler.answers)}</span>
+              )}
+            </li>
+          ))
+        }
+      </ul>
+    </section>
+  </div>
+
+  <section class="mt-12">
+    <h2 class="text-2xl">Payments</h2>
+    <div class="mt-3 overflow-x-auto">
+      <table class="w-full min-w-[44rem] text-left text-sm">
+        <thead class="border-b border-warm-light text-xs uppercase tracking-wider text-warm-mid">
+          <tr>
+            <th scope="col" class="py-2 pr-4 font-medium">Received</th>
+            <th scope="col" class="py-2 pr-4 font-medium">How</th>
+            <th scope="col" class="py-2 pr-4 font-medium">Amount</th>
+            <th scope="col" class="py-2 pr-4 font-medium">Card fee</th>
+            <th scope="col" class="py-2 pr-4 font-medium">Note</th>
+            <th scope="col" class="py-2 font-medium">Recorded by</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-cream-dark">
+          {
+            payments.map((payment) => (
+              <tr class:list={[payment.voided_at && "text-warm-mid line-through decoration-warm-light"]}>
+                <td class="py-3 pr-4 whitespace-nowrap">
+                  {formatDate(payment.received_on ?? payment.created_at.slice(0, 10))}
+                </td>
+                <td class="py-3 pr-4">
+                  {METHOD_LABEL[payment.method]}
+                  {payment.kind === "refund" && ", refund"}
+                </td>
+                <td class="py-3 pr-4">
+                  {payment.kind === "refund" ? "−" : ""}
+                  {formatUsd(payment.amount_cents)}
+                </td>
+                <td class="py-3 pr-4">{payment.fee_cents > 0 ? formatUsd(payment.fee_cents) : ""}</td>
+                <td class="py-3 pr-4">
+                  {payment.note}
+                  {payment.voided_at && (
+                    <span class="block text-xs no-underline">Voided: {payment.void_reason}</span>
+                  )}
+                </td>
+                <td class="py-3">
+                  {payment.method === "card" ? "Stripe" : payment.recorded_by}
+                  {canEdit && payment.method !== "card" && !payment.voided_at && (
+                    <details class="mt-1">
+                      <summary class="cursor-pointer text-xs underline underline-offset-4">Void</summary>
+                      <form method="POST" action={actions.voidPayment} class="mt-2 space-y-2">
+                        <input type="hidden" name="payment_id" value={payment.id} />
+                        <label class="block text-xs">
+                          Why
+                          <input type="text" name="reason" maxlength="500" required class={`${input} mt-1`} />
+                        </label>
+                        <button type="submit" class="cursor-pointer border border-orange px-4 py-1.5 text-xs font-medium uppercase tracking-[0.15em] text-orange hover:bg-orange hover:text-white">
+                          Void this payment
+                        </button>
+                      </form>
+                    </details>
+                  )}
+                </td>
+              </tr>
+            ))
+          }
+          {
+            payments.length === 0 && (
+              <tr>
+                <td colspan="6" class="py-6 text-warm-mid">No payments yet.</td>
+              </tr>
+            )
+          }
+        </tbody>
+      </table>
+    </div>
+    <p class="mt-3 text-xs text-warm-mid">
+      Card payments arrive from Stripe by themselves and are refunded in Stripe. The card fee is
+      charged on top and is not part of what the trip has been paid.
+    </p>
+  </section>
+
+  {
+    credits.length > 0 && (
+      <section class="mt-12">
+        <h2 class="text-2xl">Credits</h2>
+        <ul class="mt-3 divide-y divide-cream-dark border-y border-cream-dark text-sm">
+          {credits.map((credit) => (
+            <li class="flex flex-wrap justify-between gap-4 py-2.5">
+              <span>
+                <span class="text-dark">{credit.reason}</span>
+                <span class="block text-xs text-warm-mid">
+                  {credit.created_by}, {formatDate(credit.created_at.slice(0, 10))}
+                </span>
+              </span>
+              <span class="text-dark">
+                {credit.amount_cents < 0 ? "Taken back " : ""}
+                {formatUsd(Math.abs(credit.amount_cents))}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </section>
+    )
+  }
+
+  {
+    canEdit && (
+      <div class="mt-12 grid gap-10 border-t border-cream-dark pt-10 lg:grid-cols-2">
+        <section>
+          <h2 class="text-2xl">Record a payment</h2>
+          <p class="mt-2 text-sm text-warm-mid">
+            For money that did not come through the card page: a wire, ACH, check or cash.
+          </p>
+          <form method="POST" action={actions.recordOfflinePayment} class="mt-4 space-y-4">
+            <input type="hidden" name="booking_id" value={booking.id} />
+            <div class="grid gap-4 sm:grid-cols-2">
+              <label class="block text-sm font-medium text-dark">
+                How it arrived
+                <select name="method" class={`${input} mt-1 font-light`} required>
+                  {OFFLINE_METHODS.map((method) => (
+                    <option value={method}>{METHOD_LABEL[method]}</option>
+                  ))}
+                </select>
+              </label>
+              <label class="block text-sm font-medium text-dark">
+                Amount (USD)
+                <input type="text" name="amount" inputmode="decimal" placeholder="750" required class={`${input} mt-1 font-light`} />
+              </label>
+            </div>
+            <label class="block text-sm font-medium text-dark">
+              Date received
+              <input type="date" name="received_on" value={today} max={today} required class={`${input} mt-1 block font-light sm:w-1/2`} />
+            </label>
+            <label class="block text-sm font-medium text-dark">
+              Note (optional)
+              <input type="text" name="note" maxlength="500" placeholder="Bank reference, check number" class={`${input} mt-1 font-light`} />
+            </label>
+            <button type="submit" class={button}>Record payment</button>
+          </form>
+        </section>
+
+        <section>
+          <h2 class="text-2xl">Credit</h2>
+          <p class="mt-2 text-sm text-warm-mid">
+            A credit lowers what this booking owes. Taking one back raises it again. Every entry
+            is kept.
+          </p>
+          <form method="POST" action={actions.addCredit} class="mt-4 space-y-4">
+            <input type="hidden" name="booking_id" value={booking.id} />
+            <div class="grid gap-4 sm:grid-cols-2">
+              <label class="block text-sm font-medium text-dark">
+                Action
+                <select name="direction" class={`${input} mt-1 font-light`}>
+                  <option value="add">Add a credit</option>
+                  <option value="remove">Take a credit back</option>
+                </select>
+              </label>
+              <label class="block text-sm font-medium text-dark">
+                Amount (USD)
+                <input type="text" name="amount" inputmode="decimal" placeholder="500" required class={`${input} mt-1 font-light`} />
+              </label>
+            </div>
+            <label class="block text-sm font-medium text-dark">
+              What it is for
+              <input type="text" name="reason" maxlength="500" required class={`${input} mt-1 font-light`} />
+            </label>
+            <button type="submit" class={button}>Save credit</button>
+          </form>
+        </section>
+      </div>
+    )
+  }
+
+  {
+    canEdit && booking.status !== "canceled" && booking.status !== "refunded" && (
+      <section class="mt-12 max-w-2xl border-t border-cream-dark pt-8">
+        <h2 class="text-2xl">Cancel this booking</h2>
+        <p class="mt-2 text-sm text-warm-mid">
+          Frees the seats. Money already received stays on record here; refund a card payment in
+          Stripe, and it will show up above by itself.
+        </p>
+        <details class="mt-4">
+          <summary class="cursor-pointer text-sm text-dark underline underline-offset-4">
+            I want to cancel it
+          </summary>
+          <form method="POST" action={actions.cancelBooking} class="mt-4 space-y-3">
+            <input type="hidden" name="booking_id" value={booking.id} />
+            <label class="block text-sm font-medium text-dark">
+              Why
+              <input type="text" name="reason" maxlength="500" required class={`${input} mt-1 font-light`} />
+            </label>
+            <button type="submit" class="cursor-pointer border border-orange px-6 py-2 text-sm font-medium uppercase tracking-[0.15em] text-orange transition-colors hover:bg-orange hover:text-white">
+              Cancel booking
+            </button>
+          </form>
+        </details>
+      </section>
+    )
+  }
+</Admin>

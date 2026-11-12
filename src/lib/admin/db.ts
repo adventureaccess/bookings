@@ -1,5 +1,6 @@
 import { maskEmail, type StaffSession } from "../auth/staff";
 import type {
+  BookingDetail,
   BookingListItem,
   Departure,
   DepartureWithTrip,
@@ -363,4 +364,89 @@ export async function listBookings(): Promise<BookingListItem[]> {
     .limit(200);
   if (error) logDbError("listBookings", error);
   return (data ?? []) as unknown as BookingListItem[];
+}
+
+export interface MoneyAttention {
+  /** Bookings whose money and status do not line up. */
+  bookings: { id: string; reference: string }[];
+  /** Stripe events that could not be handled and are waiting for a retry or a look. */
+  failedEvents: { stripe_event_id: string; type: string; error: string | null }[];
+}
+
+export async function listMoneyAttention(): Promise<MoneyAttention> {
+  const db = createServiceClient();
+  const [flagged, events] = await Promise.all([
+    db.from("bookings").select("id, reference").eq("needs_attention", true).order("created_at"),
+    db
+      .from("webhook_events")
+      .select("stripe_event_id, type, error")
+      .is("processed_at", null)
+      .not("error", "is", null)
+      .order("created_at", { ascending: false })
+      .limit(20),
+  ]);
+  if (flagged.error) logDbError("listMoneyAttention.bookings", flagged.error);
+  if (events.error) logDbError("listMoneyAttention.events", events.error);
+  return {
+    bookings: (flagged.data ?? []) as MoneyAttention["bookings"],
+    failedEvents: (events.data ?? []) as MoneyAttention["failedEvents"],
+  };
+}
+
+/** Staff have looked at a flagged booking and sorted it out. */
+export async function clearBookingAttention(id: string, staff: StaffSession): Promise<boolean> {
+  const { error } = await createServiceClient()
+    .from("bookings")
+    .update({ needs_attention: false })
+    .eq("id", id);
+  if (error) {
+    logDbError("clearBookingAttention", error);
+    return false;
+  }
+  await logActivity(staff, "booking", id, "clear_attention");
+  return true;
+}
+
+/**
+ * Cancels a booking and frees its seats. Money already received stays on
+ * record; refunds are a separate step.
+ */
+export async function cancelBooking(id: string, reason: string, staff: StaffSession): Promise<boolean> {
+  const db = createServiceClient();
+  const { data, error } = await db
+    .from("bookings")
+    .update({ status: "canceled" })
+    .eq("id", id)
+    .in("status", ["pending", "deposit_paid", "paid_in_full"])
+    .select("id")
+    .maybeSingle();
+  if (error || !data) {
+    logDbError("cancelBooking", error);
+    return false;
+  }
+  const { error: holdError } = await db.from("seat_holds").delete().eq("booking_id", id);
+  if (holdError) logDbError("cancelBooking.hold", holdError);
+  await logActivity(staff, "booking", id, "cancel", { reason });
+  return true;
+}
+
+/** One booking with everything staff need to see about it. */
+export async function getBookingDetail(id: string): Promise<BookingDetail | null> {
+  const { data, error } = await createServiceClient()
+    .from("bookings")
+    .select(
+      `id, reference, status, traveler_count, total_cents, discount_cents, paid_cents,
+       needs_attention, source, created_at,
+       departures ( id, start_date, end_date, price_cents, deposit_cents, balance_due_date,
+                    payment_schedule, visibility, trips ( title, slug ) ),
+       seat_holds ( seats, expires_at ),
+       travelers!travelers_booking_id_fkey ( id, first_name, last_name, email, phone, is_lead, answers ),
+       payments ( id, kind, method, status, amount_cents, fee_cents, received_on, note, recorded_by,
+                  voided_at, void_reason, stripe_payment_intent_id, created_at ),
+       booking_adjustments ( id, amount_cents, reason, created_by, created_at )`,
+    )
+    .eq("id", id)
+    .maybeSingle();
+  if (error) logDbError("getBookingDetail", error);
+  return (data as unknown as BookingDetail | null) ?? null;
 }

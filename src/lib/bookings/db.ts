@@ -70,11 +70,28 @@ export interface BookingSummary {
   status: "pending" | "deposit_paid" | "paid_in_full" | "canceled" | "refunded";
   traveler_count: number;
   total_cents: number;
+  discount_cents: number;
   paid_cents: number;
+  /** Per person. */
+  price_cents: number;
+  /** Per person. */
+  deposit_cents: number;
   deposit_due_cents: number;
+  payment_schedule: unknown;
+  balance_due_date: string;
+  /** The system-wide card fee, in hundredths of a percent. */
+  card_fee_bps: number;
+  payments: {
+    kind: "deposit" | "balance" | "refund";
+    method: "card" | "wire" | "ach" | "check" | "cash" | "other";
+    amount_cents: number;
+    fee_cents: number;
+    received_on: string;
+  }[];
   hold_expires_at: string | null;
   hold_active: boolean;
   departure_id: string;
+  departure_open: boolean;
   is_private: boolean;
   start_date: string;
   end_date: string;

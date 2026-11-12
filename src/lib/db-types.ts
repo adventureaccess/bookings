@@ -63,3 +63,62 @@ export interface BookingListItem {
   seat_holds: { seats: number; expires_at: string } | null;
   travelers: { first_name: string; last_name: string; email: string | null; is_lead: boolean }[];
 }
+
+export type BookingStatus = BookingListItem["status"];
+export type PaymentMethod = "card" | "wire" | "ach" | "check" | "cash" | "other";
+
+export interface BookingDetail {
+  id: string;
+  reference: string;
+  status: BookingStatus;
+  traveler_count: number;
+  total_cents: number;
+  discount_cents: number;
+  paid_cents: number;
+  needs_attention: boolean;
+  source: string | null;
+  created_at: string;
+  departures: {
+    id: string;
+    start_date: string;
+    end_date: string;
+    price_cents: number;
+    deposit_cents: number;
+    balance_due_date: string;
+    payment_schedule: unknown;
+    visibility: DepartureVisibility;
+    trips: Pick<Trip, "title" | "slug"> | null;
+  } | null;
+  seat_holds: { seats: number; expires_at: string } | null;
+  travelers: {
+    id: string;
+    first_name: string;
+    last_name: string;
+    email: string | null;
+    phone: string | null;
+    is_lead: boolean;
+    answers: unknown;
+  }[];
+  payments: {
+    id: string;
+    kind: "deposit" | "balance" | "refund";
+    method: PaymentMethod;
+    status: "pending" | "succeeded" | "failed";
+    amount_cents: number;
+    fee_cents: number;
+    received_on: string | null;
+    note: string | null;
+    recorded_by: string | null;
+    voided_at: string | null;
+    void_reason: string | null;
+    stripe_payment_intent_id: string | null;
+    created_at: string;
+  }[];
+  booking_adjustments: {
+    id: string;
+    amount_cents: number;
+    reason: string;
+    created_by: string;
+    created_at: string;
+  }[];
+}

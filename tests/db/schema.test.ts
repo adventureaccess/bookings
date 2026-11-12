@@ -4,6 +4,7 @@ import { as, createDatabase } from "./harness";
 
 const EXPECTED_TABLES = [
   "activity_log",
+  "booking_adjustments",
   "bookings",
   "departures",
   "payments",
@@ -11,6 +12,7 @@ const EXPECTED_TABLES = [
   "policy_versions",
   "rate_limits",
   "seat_holds",
+  "settings",
   "staff",
   "sync_jobs",
   "travelers",

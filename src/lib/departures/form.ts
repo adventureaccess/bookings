@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { addDays, isIsoDate } from "../dates";
+import { isIsoDate } from "../dates";
 import { centsToInputValue, parseDollarsToCents } from "../money";
 
 /**
@@ -13,8 +13,6 @@ export const DEPARTURE_VISIBILITIES = ["public", "private"] as const;
 export type DepartureStatus = (typeof DEPARTURE_STATUSES)[number];
 export type DepartureVisibility = (typeof DEPARTURE_VISIBILITIES)[number];
 
-/** Default from the brief: the balance is due 60 days before departure. */
-export const BALANCE_DUE_DAYS_BEFORE = 60;
 const MAX_PRICE_CENTS = 10_000_000; // $100,000 per person
 const MAX_GROUP = 100;
 const MAX_QUESTIONS = 20;
@@ -211,12 +209,10 @@ export function parseDepartureForm(form: FormData): DepartureFormResult {
     errors.deposit = "The deposit cannot be more than the price.";
   }
 
-  let balanceDue = values.balance_due_date;
-  if (balanceDue === "" && !errors.start_date) {
-    balanceDue = addDays(values.start_date, -BALANCE_DUE_DAYS_BEFORE);
-  }
+  // The final balance date is typed in on every departure. There is no default.
+  const balanceDue = values.balance_due_date;
   if (!isIsoDate(balanceDue)) {
-    if (!errors.start_date) errors.balance_due_date = "Enter a date, or leave it blank.";
+    errors.balance_due_date = "Enter the date the final balance is due.";
   } else if (!errors.start_date && balanceDue > values.start_date) {
     errors.balance_due_date = "The balance must be due on or before the start date.";
   }

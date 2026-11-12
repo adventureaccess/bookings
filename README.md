@@ -2,7 +2,7 @@
 
 Takes a traveler from a trip page to a paid deposit, recorded in Stripe and HubSpot. The full brief is in [CLAUDE.md](CLAUDE.md). This README covers running it.
 
-Status: milestone 3 (booking form and holds). Travelers can fill in the booking form for a departure and have their seats held for 30 minutes. Staff sign in with Google at `/admin` and manage departures, policy versions and the trip list, and can see bookings. No payment, HubSpot or email yet.
+Status: milestone 4 (payments). Travelers register for a departure, see what they owe and pay by card through Stripe, with the card fee shown as its own line. Staff record wires, checks and credits, and set the card fee. Stripe is in test mode. No itinerary pages, documents, HubSpot or email yet.
 
 Built with Astro (server-rendered), hosted on Netlify, with a Supabase Postgres database.
 
@@ -58,7 +58,7 @@ insert into public.staff (email, role) values ('name@adventure-access.com', 'sta
 
 **What the admin does**
 
-- **Departures:** create, edit and delete. Prices are entered in dollars and stored in cents. A blank final balance due date becomes 60 days before the start date. Each departure can also list up to four scheduled payments between the deposit and the final balance: a name, a due date and an amount per person. They must fall before the final balance date, and with the deposit they cannot add up to more than the price. A private departure gets an unguessable link. A departure with bookings cannot be deleted; cancel it instead.
+- **Departures:** create, edit and delete. Prices are entered in dollars and stored in cents. The final balance due date is typed in on every departure; there is no default. Each departure can also list up to four scheduled payments between the deposit and the final balance: a name, a due date and an amount per person. They must fall before the final balance date, and with the deposit they cannot add up to more than the price. A private departure gets an unguessable link. A departure with bookings cannot be deleted; cancel it instead.
 - **Policies:** a draft can be edited freely. Publishing locks the text for good, in the app and in the database, so there is a permanent record of what each traveler agreed to. Only a published version can be attached to a departure.
 - **Trips:** "Sync from website" reads the feed at `TRIPS_FEED_URL` and updates slug, title, destination and hero image. A trip that left the feed is switched off, never deleted. Until the website publishes the feed, the button explains that it is not set up.
 - Every change is written to `activity_log` with who made it.
@@ -77,9 +77,29 @@ insert into public.staff (email, role) values ('name@adventure-access.com', 'sta
 - **`/booking/<reference>?t=<token>`** is the traveler's own booking page. It needs both parts; only a hash of the token is stored. It shows no email or phone number.
 - **Coming back** and submitting again from the same browser changes the pending booking and reuses its hold. There is never a second hold.
 - **Seats left** = capacity, minus travelers on paid bookings, minus live holds on pending bookings. An expired hold stops counting by itself; no cleanup job is needed for that.
-- **`/admin/bookings`** lists bookings and whether their seats are still held.
+- **`/admin/bookings`** lists bookings; each one opens to its travelers, payments and credits.
 
-Until milestone 4 adds Stripe, a held booking simply expires. Nothing is charged.
+## Payments
+
+Money reaches a booking in two ways, and both end in the same database function, so the same rules apply.
+
+- **By card.** The traveler picks an option on their booking page: the deposit, the next scheduled payment, or the whole balance. The server works out the amount from the database and the card fee from settings, and sends the traveler to Stripe's page. Only Stripe's webhook (`/api/stripe/webhook`) records the payment. It checks Stripe's signature, stores the event ID before doing anything, and skips an event it has already handled, so a replay changes nothing. It also checks that what Stripe charged equals what the server asked for; if not, nothing is recorded and the event shows on the admin overview.
+- **Offline.** In the admin, open a booking and use "Record a payment" for a wire, ACH, check or cash. Each entry keeps who recorded it. A mistake is voided with a reason, never deleted.
+- **Credits.** "Credit" on the same page lowers what a booking owes. A credit can be taken back; every entry is kept.
+- **Card fee.** One percentage for the whole system, under Settings in the admin. Only an admin can change it. It is added on top of card payments, shown to the traveler before they pay, and never counts toward the trip price.
+- **Status.** A booking becomes "deposit paid" once the deposit is in and "paid in full" once nothing is owed. A payment that arrives after a hold ran out still confirms the booking if the seats are free; if they are gone, the money is recorded, the booking stays pending and it is flagged on the admin overview. Nothing is refunded automatically.
+- **Refunds** of card payments are made in the Stripe dashboard; they show up on the booking by themselves. Cancel a booking from its admin page to free its seats.
+
+**Switching card payments on (test mode)**
+
+1. In the Stripe dashboard, with **Test mode** on, copy the secret key (it starts with `sk_test_`) into `STRIPE_SECRET_KEY`: in `.env.local` for your machine, and in Netlify, marked secret, for the deployed site.
+2. For your machine, install the Stripe CLI and run `stripe listen --forward-to localhost:4321/api/stripe/webhook`. It prints a signing secret starting with `whsec_`; put it in `STRIPE_WEBHOOK_SECRET` and restart `npm run dev`.
+3. For the deployed site, add a webhook endpoint in Stripe pointing at `https://<site>/api/stripe/webhook` for these events: `checkout.session.completed`, `checkout.session.expired`, `payment_intent.payment_failed`, `charge.refunded`. Put its signing secret in Netlify as `STRIPE_WEBHOOK_SECRET`.
+4. Pay with Stripe's test card `4242 4242 4242 4242`, any future date, any CVC.
+
+A live key is refused unless `STRIPE_LIVE_MODE` is also `true`. Leave that unset until launch. Until the keys are set, the pay button tells the traveler that card payment is not switched on.
+
+**Housekeeping.** `netlify/functions/cleanup-holds.mts` runs hourly and asks the app to delete seat holds that ran out long ago. It needs `CRON_SECRET` set in Netlify to any long random string. Nothing depends on it running: expired holds already count for nothing.
 
 ## Apply migrations to the dev project
 
@@ -94,7 +114,7 @@ npx supabase db push
 
 `--dry-run` lists what would be applied. Read it before the real push, and check the project ref is the dev project. To add a migration, run `npx supabase migration new <name>` and fill in the file it creates; do not edit one that has been applied.
 
-The dev project is "Bookings" (ref `pvfnlahywytptizpgkwo`). The nine migrations in this folder are already applied there, and the filenames match the versions recorded in the database, so `db push` only sends new ones.
+The dev project is "Bookings" (ref `pvfnlahywytptizpgkwo`). The ten migrations in this folder are already applied there, and the filenames match the versions recorded in the database, so `db push` only sends new ones.
 
 ## Hosting on Netlify
 
@@ -131,6 +151,8 @@ npm run test:e2e
 - `npm run test:e2e` drives the booking form in a real browser (Playwright). First time only: `npx playwright install chromium`.
 - Both create private throwaway departures and delete them afterward. Both need at least one published policy version.
 
+To exercise the webhook without the Stripe CLI, `node scripts/fake-stripe-event.mjs <reference> <amount_cents> <fee_cents>` sends the local dev server an event signed with your `STRIPE_WEBHOOK_SECRET`, exactly as Stripe would. Add `--bad-signature`, `--charged=<cents>` or a repeated `--event=<id>` to see it refused or skipped. It only talks to localhost.
+
 - `npm test` runs the unit tests and the database tests. The database tests apply every migration to an in-process Postgres (PGlite) and check constraints and row-level security, including that **every table has RLS enabled and forced**. A new table without RLS fails CI. No database or Docker is needed.
 - `npm run check:env` fails if any browser-exposed environment variable name appears in the repo.
 - `npm run check:build` runs after the build and fails if the local-only staff shortcut reached the built app.
@@ -151,6 +173,9 @@ npm run test:e2e
 | `src/lib/auth/` | Who counts as staff, and resolving the signed-in staff member |
 | `src/lib/admin/db.ts` | Admin data access (service role, after the role check) |
 | `src/lib/bookings/` | Booking form validation, payment plan, access tokens, and the calls to the booking SQL functions |
+| `src/lib/payments/`, `src/lib/stripe/` | What is due, the card fee, the Checkout Session, reading Stripe events, and the calls to the money SQL functions |
+| `src/pages/api/` | The Stripe webhook and the cron route |
+| `netlify/functions/` | The hourly scheduled function |
 | `src/lib/departures/`, `src/lib/policies/`, `src/lib/trips/` | Form parsing and trip feed logic, with tests |
 | `src/lib/money.ts`, `src/lib/dates.ts` | Integer-cents and calendar-date helpers |
 | `src/lib/schemas/` | Shared Zod building blocks |
@@ -165,5 +190,6 @@ npm run test:e2e
 - One milestone per branch and pull request. Never push to `main`.
 - Stripe test mode and the Supabase dev project only.
 - No real secrets in code, tests, fixtures or commit messages.
-- The service-role client is for the webhook, cron routes, the booking transaction and admin actions after a role check. Nowhere else.
+- The service-role client is for the webhook, cron routes, the booking flow (through its SQL functions) and admin actions after a role check. Nowhere else.
+- Card money is recorded only by the Stripe webhook. Offline money only by a staff action, with who and why.
 - Line endings are LF everywhere (`.gitattributes`). Netlify reads files such as `.nvmrc` as they are, and a Windows line ending breaks the build.
