@@ -14,6 +14,7 @@ function form(overrides: Record<string, string> = {}): FormData {
   const data = new FormData();
   const fields: Record<string, string> = {
     trip_id: TRIP,
+    group_name: "",
     start_date: "2027-07-10",
     end_date: "2027-07-22",
     price: "4,950",
@@ -44,6 +45,7 @@ describe("parseDepartureForm", () => {
       ok: true,
       data: {
         trip_id: TRIP,
+        group_name: null,
         start_date: "2027-07-10",
         end_date: "2027-07-22",
         price_cents: 495000,
@@ -65,6 +67,12 @@ describe("parseDepartureForm", () => {
       "Enter the date the final balance is due.",
     );
     expect(errorsOf({ balance_due_date: "soon" }).balance_due_date).toBeDefined();
+  });
+
+  it("keeps a group name, and treats a blank one as none", () => {
+    const named = parseDepartureForm(form({ group_name: "  Hulsey family " }));
+    expect(named.ok && named.data.group_name).toBe("Hulsey family");
+    expect(errorsOf({ group_name: "x".repeat(121) }).group_name).toMatch(/under 120/);
   });
 
   it("keeps a balance due date that was typed in", () => {

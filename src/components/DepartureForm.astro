@@ -48,6 +48,15 @@ const describe = (name: keyof DepartureFormErrors) =>
     </select>
   </Field>
 
+  <Field
+    name="group_name"
+    label="Group name (optional)"
+    help="A label for staff, such as the family or group this trip is for. Travelers never see it."
+    error={errors.group_name}
+  >
+    <input id="group_name" name="group_name" type="text" maxlength="120" value={values.group_name} class={input} disabled={!canEdit} aria-describedby={errors.group_name ? "group_name-error" : "group_name-help"} />
+  </Field>
+
   <div class="grid gap-6 sm:grid-cols-2">
     <Field name="start_date" label="Start date" error={errors.start_date}>
       <input id="start_date" name="start_date" type="date" value={values.start_date} class={input} disabled={!canEdit} required aria-describedby={describe("start_date")} />

@@ -76,6 +76,43 @@ describe("planTripSync", () => {
     expect(planTripSync([{ ...ladakh, active: false }], []).deactivate).toEqual([]);
   });
 
+  it("carries a tour's itinerary when the feed has one, and leaves it alone when it does not", () => {
+    const itinerary = [
+      { kind: "day" as const, day_label: "Day 1", title: "Arrive", body_md: "", image_url: null },
+    ];
+    const stored = { ...ladakh, itinerary };
+
+    const withNew = planTripSync([ladakh], [{ ...ladakhFeed, itinerary }]);
+    expect(withNew.updated).toBe(1);
+    expect(withNew.upserts[0]?.itinerary).toEqual(itinerary);
+
+    const same = planTripSync([stored], [{ ...ladakhFeed, itinerary }]);
+    expect(same.unchanged).toBe(1);
+
+    const absent = planTripSync([stored], [ladakhFeed]);
+    expect(absent.unchanged).toBe(1);
+    expect(absent.upserts).toHaveLength(0);
+  });
+
+  it("checks itinerary items in the feed", () => {
+    const trip = { slug: "ladakh-multisport", title: "Ladakh Multisport", destination: "ladakh" };
+    expect(
+      tripFeedSchema.safeParse({
+        trips: [{ ...trip, itinerary: [{ kind: "day", day_label: "Day 1", title: "Arrive", body_md: "", image_url: null }] }],
+      }).success,
+    ).toBe(true);
+    expect(
+      tripFeedSchema.safeParse({
+        trips: [{ ...trip, itinerary: [{ kind: "day", day_label: "", title: "", body_md: "", image_url: null }] }],
+      }).success,
+    ).toBe(false);
+    expect(
+      tripFeedSchema.safeParse({
+        trips: [{ ...trip, itinerary: [{ kind: "day", day_label: "", title: "x", body_md: "", image_url: "/relative.jpg" }] }],
+      }).success,
+    ).toBe(false);
+  });
+
   it("ignores a repeated slug in the feed", () => {
     const plan = planTripSync([], [ladakhFeed, { ...ladakhFeed, title: "Copy" }]);
     expect(plan.upserts).toHaveLength(1);

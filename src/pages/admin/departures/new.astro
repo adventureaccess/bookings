@@ -16,6 +16,7 @@ const failed = result?.data && !result.data.ok ? result.data : null;
 
 const blank: DepartureFormValues = {
   trip_id: trips.length === 1 ? (trips[0]?.id ?? "") : "",
+  group_name: "",
   start_date: "",
   end_date: "",
   price: "",

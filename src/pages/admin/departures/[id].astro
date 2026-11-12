@@ -34,6 +34,7 @@ const deleteMessage =
 
 const current: DepartureFormValues = {
   trip_id: departure.trip_id,
+  group_name: departure.group_name ?? "",
   start_date: departure.start_date,
   end_date: departure.end_date,
   price: centsToInputValue(departure.price_cents),
@@ -59,7 +60,18 @@ const bookingUrl =
 ---
 
 <Admin title={trip ? `${trip.title}` : "Departure"}>
-  <p class="-mt-4 mb-8 text-warm-mid">{formatDateRange(departure.start_date, departure.end_date)}</p>
+  <p class="-mt-4 mb-6 text-warm-mid">
+    {departure.group_name && `${departure.group_name}, `}
+    {formatDateRange(departure.start_date, departure.end_date)}
+  </p>
+  <p class="mb-8 flex flex-wrap gap-3 text-sm">
+    <a href={`/admin/departures/${departure.id}/itinerary`} class="border border-dark px-4 py-2 font-medium uppercase tracking-[0.15em] text-dark transition-colors hover:bg-dark hover:text-white">
+      Itinerary
+    </a>
+    <a href={`/admin/departures/${departure.id}/roster`} class="border border-dark px-4 py-2 font-medium uppercase tracking-[0.15em] text-dark transition-colors hover:bg-dark hover:text-white">
+      Roster
+    </a>
+  </p>
 
   {saved?.error && <Notice kind="error">{saved.error.message}</Notice>}
   {failed?.message && <Notice kind="error">{failed.message}</Notice>}
@@ -87,7 +99,7 @@ const bookingUrl =
           {departure.visibility === "private"
             ? "This departure is private. Only people with this exact link can book it."
             : "This is the address the trip page will link to."}{" "}
-          The booking page is not built yet, so the link does not work today.
+          It shows this departure's itinerary, price and payment schedule, then the registration form.
         </p>
         <p class="mt-3 break-all bg-cream-dark px-3 py-2 font-mono text-xs text-charcoal">
           {bookingUrl}

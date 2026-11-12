@@ -106,7 +106,7 @@ export async function syncTrips(
   const db = createServiceClient();
   const { data: existing, error: readError } = await db
     .from("trips")
-    .select("slug, title, destination, hero_image_url, active");
+    .select("slug, title, destination, hero_image_url, active, itinerary");
   if (readError) {
     logDbError("syncTrips read", readError);
     return fail("Could not read the current trips.");
@@ -145,7 +145,7 @@ export async function syncTrips(
 // --- Departures ------------------------------------------------------------
 
 const DEPARTURE_COLUMNS =
-  "id, trip_id, start_date, end_date, price_cents, deposit_cents, currency, balance_due_date, min_travelers, max_travelers, status, visibility, private_token, policy_version_id, custom_questions, payment_schedule, updated_at";
+  "id, trip_id, start_date, end_date, price_cents, deposit_cents, currency, balance_due_date, min_travelers, max_travelers, status, visibility, private_token, policy_version_id, custom_questions, payment_schedule, group_name, updated_at";
 
 export async function listDepartures(): Promise<DepartureWithTrip[]> {
   const { data, error } = await createServiceClient()
