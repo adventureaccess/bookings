@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { GOOGLE_DRIVE_FOLDER_ID, GOOGLE_SERVICE_ACCOUNT_KEY } from "astro:env/server";
-import { parseServiceAccountKey, uploadToDrive } from "../drive/client";
+import { checkDriveConnection, parseServiceAccountKey, uploadToDrive, type DriveCheck } from "../drive/client";
 
 /**
  * Where uploaded traveler documents go. In production that is the restricted
@@ -52,4 +52,23 @@ export function documentStore(): DocumentStore | null {
     };
   }
   return null;
+}
+
+/** For the admin: is the Shared Drive reachable, and if not, which step fails. Adds no file. */
+export async function checkDocumentStore(): Promise<DriveCheck> {
+  if (!GOOGLE_SERVICE_ACCOUNT_KEY || !GOOGLE_DRIVE_FOLDER_ID) {
+    return {
+      ok: false,
+      message: `Not set up: ${!GOOGLE_SERVICE_ACCOUNT_KEY ? "GOOGLE_SERVICE_ACCOUNT_KEY" : "GOOGLE_DRIVE_FOLDER_ID"} is missing in Netlify.`,
+    };
+  }
+  const account = parseServiceAccountKey(GOOGLE_SERVICE_ACCOUNT_KEY);
+  if (!account) {
+    return {
+      ok: false,
+      message:
+        "GOOGLE_SERVICE_ACCOUNT_KEY is set but is not a service account key. Paste the whole JSON file Google gave you.",
+    };
+  }
+  return checkDriveConnection(account, GOOGLE_DRIVE_FOLDER_ID);
 }

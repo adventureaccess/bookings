@@ -16,6 +16,8 @@ import {
   voidPayment,
 } from "../lib/payments/db";
 import { formatFeePercent, parseFeePercent, payOptions } from "../lib/payments/due";
+import { allowRequest, callerAddress } from "../lib/rate-limit";
+import { TOO_MANY } from "../lib/rate-limit-rules";
 import { bookingReference } from "../lib/schemas";
 import { stripeClient, StripeNotConfigured } from "../lib/stripe/client";
 import { formText, formUuid, requireAdmin, requireWriter } from "./guards";
@@ -39,6 +41,7 @@ export const paymentActions = {
   startPayment: defineAction({
     accept: "form",
     handler: async (form, context): Promise<StartPaymentResult> => {
+      if (!(await allowRequest("payment_start", callerAddress(context)))) return failed(TOO_MANY);
       const reference = formText(form, "reference", 20);
       const token = formText(form, "token", 64);
       const choice = formText(form, "option", 20);

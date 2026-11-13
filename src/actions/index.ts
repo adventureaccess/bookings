@@ -1,6 +1,5 @@
-import { isIP } from "node:net";
-import { ActionError, defineAction, type ActionAPIContext } from "astro:actions";
-import { TRIPS_FEED_URL } from "astro:env/server";
+import { ActionError, defineAction } from "astro:actions";
+import { TRIPS_FEED_URL, TURNSTILE_SECRET_KEY, TURNSTILE_SITE_KEY } from "astro:env/server";
 import {
   deleteDeparture,
   publishPolicy,
@@ -28,7 +27,10 @@ import {
 } from "../lib/bookings/form";
 import { recallBooking, rememberBooking } from "../lib/bookings/session";
 import { getLeadEmail } from "../lib/payments/db";
+import { allowRequest, callerAddress } from "../lib/rate-limit";
+import { TOO_MANY } from "../lib/rate-limit-rules";
 import { enqueueBookingLinkEmail } from "../lib/sync/db";
+import { TURNSTILE_FIELD, verifyTurnstile } from "../lib/turnstile";
 import { hashAccessToken, newAccessToken } from "../lib/bookings/token";
 import {
   parseDepartureForm,
@@ -88,16 +90,6 @@ export type BookingActionResult =
   | { ok: true; reference: string; token: string }
   | { ok: false; message?: string; errors: BookingFormErrors; values: BookingFormValues };
 
-/** The caller's address for the policy acceptance record, if it is a real IP. */
-function clientIp(context: ActionAPIContext): string | null {
-  try {
-    const address = context.clientAddress;
-    return isIP(address) ? address : null;
-  } catch {
-    return null;
-  }
-}
-
 function bookingRefusal(result: Extract<CreateBookingResult, { ok: false }>): string {
   switch (result.reason) {
     case "not_enough_seats":
@@ -129,6 +121,9 @@ export const server = {
   createBooking: defineAction({
     accept: "form",
     handler: async (form, context): Promise<BookingActionResult> => {
+      if (!(await allowRequest("booking_form", callerAddress(context)))) {
+        return { ok: false, message: TOO_MANY, errors: {}, values: {} };
+      }
       const departureId = form.get("departure_id");
       const rawKey = form.get("key");
       if (typeof departureId !== "string" || !UUID.test(departureId)) {
@@ -149,6 +144,26 @@ export const server = {
           return { ok: false, message: bookingRefusal({ ok: false, reason: "error" }), errors: {}, values: {} };
         }
         return { ok: false, errors: parsed.errors, values: parsed.values };
+      }
+
+      // Is this a person? Checked once the form itself is in order, because a
+      // Turnstile token can be used only once. Skipped until the keys are set.
+      if (TURNSTILE_SITE_KEY && TURNSTILE_SECRET_KEY) {
+        const raw = form.get(TURNSTILE_FIELD);
+        const human = await verifyTurnstile(
+          typeof raw === "string" ? raw : "",
+          TURNSTILE_SECRET_KEY,
+          callerAddress(context),
+        );
+        if (!human) {
+          return {
+            ok: false,
+            message:
+              "We could not confirm you are a person. Wait for the check above the button to finish, then try again.",
+            errors: {},
+            values: parsed.values,
+          };
+        }
       }
 
       // Coming back to change details: reuse the pending booking and its hold.
@@ -174,7 +189,7 @@ export const server = {
         policyVersionId: parsed.data.policy_version_id,
         travelers: parsed.data.travelers,
         accessTokenHash: hashAccessToken(token),
-        ip: clientIp(context),
+        ip: callerAddress(context),
         userAgent: (context.request.headers.get("user-agent") ?? "").slice(0, 500),
         source: "web",
         resumeBookingId: resume?.id ?? null,

@@ -14,6 +14,9 @@ export default defineConfig({
   // Seat counts and booking pages must never be served stale.
   output: "server",
   adapter: netlify(),
+  // Always link stylesheets, never inline them: the Content-Security-Policy
+  // allows no inline style.
+  build: { inlineStylesheets: "never" },
   vite: { plugins: [tailwindcss()] },
   // Forms may carry a document of up to 4 MB (src/lib/documents/files.ts);
   // the default limit for form posts is 1 MB.

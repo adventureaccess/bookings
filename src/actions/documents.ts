@@ -1,5 +1,4 @@
-import { isIP } from "node:net";
-import { ActionError, defineAction, type ActionAPIContext } from "astro:actions";
+import { ActionError, defineAction } from "astro:actions";
 import { hashAccessToken, isAccessToken } from "../lib/bookings/token";
 import {
   createWaiverDraft,
@@ -13,6 +12,8 @@ import {
 } from "../lib/documents/db";
 import { checkUpload, documentFileName, DOCUMENT_KINDS, KIND_LABEL } from "../lib/documents/files";
 import { documentStore } from "../lib/documents/store";
+import { allowRequest, callerAddress } from "../lib/rate-limit";
+import { TOO_MANY } from "../lib/rate-limit-rules";
 import { bookingReference } from "../lib/schemas";
 import { formText, formUuid, requireAdmin, requireWriter } from "./guards";
 
@@ -30,14 +31,6 @@ const failed = (message: string, travelerId?: string): DocumentActionResult => (
   message,
   ...(travelerId ? { travelerId } : {}),
 });
-
-function clientIp(context: ActionAPIContext): string | null {
-  try {
-    return isIP(context.clientAddress) ? context.clientAddress : null;
-  } catch {
-    return null;
-  }
-}
 
 /** The booking named by the form's reference and token, or a not-found error. */
 async function ownBooking(form: FormData) {
@@ -66,7 +59,8 @@ export const documentActions = {
    */
   uploadDocument: defineAction({
     accept: "form",
-    handler: async (form): Promise<DocumentActionResult> => {
+    handler: async (form, context): Promise<DocumentActionResult> => {
+      if (!(await allowRequest("document_upload", callerAddress(context)))) return failed(TOO_MANY);
       const { reference, accessTokenHash, docs } = await ownBooking(form);
       const travelerId = formUuid(form, "traveler_id");
       const kind = DOCUMENT_KINDS.find((k) => k === formText(form, "kind", 20));
@@ -131,6 +125,7 @@ export const documentActions = {
   signWaiver: defineAction({
     accept: "form",
     handler: async (form, context): Promise<DocumentActionResult> => {
+      if (!(await allowRequest("waiver_sign", callerAddress(context)))) return failed(TOO_MANY);
       const { reference, accessTokenHash, docs } = await ownBooking(form);
       const travelerId = formUuid(form, "traveler_id");
       const waiverVersionId = formUuid(form, "waiver_version_id");
@@ -152,7 +147,7 @@ export const documentActions = {
         travelerId,
         waiverVersionId,
         signedName,
-        ip: clientIp(context),
+        ip: callerAddress(context),
         userAgent: (context.request.headers.get("user-agent") ?? "").slice(0, 500),
       });
       if (!result.ok) {

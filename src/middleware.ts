@@ -5,6 +5,9 @@ import { SECURITY_HEADERS } from "./lib/security-headers";
 const securityHeaders = defineMiddleware(async (_context, next) => {
   const response = await next();
   for (const [name, value] of Object.entries(SECURITY_HEADERS)) {
+    // The dev server's own tooling injects inline script, which the policy
+    // forbids. Every built site gets the policy.
+    if (name === "Content-Security-Policy" && import.meta.env.DEV) continue;
     response.headers.set(name, value);
   }
   return response;

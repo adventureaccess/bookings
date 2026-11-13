@@ -39,6 +39,15 @@ function holdNote(booking: (typeof bookings)[number]): string {
     again without anyone doing anything.
   </p>
 
+  <p class="mb-6">
+    <a href="/admin/export/bookings.csv" class="inline-block border border-dark px-5 py-2 text-sm font-medium uppercase tracking-[0.15em] text-dark transition-colors hover:bg-dark hover:text-white">
+      Download all as CSV
+    </a>
+    <span class="ml-3 text-xs text-warm-mid">
+      One row per traveler, with contact details. Each download is recorded under Activity.
+    </span>
+  </p>
+
   <div class="overflow-x-auto">
     <table class="w-full min-w-[52rem] text-left text-sm">
       <thead class="border-b border-warm-light text-xs uppercase tracking-wider text-warm-mid">
