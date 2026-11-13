@@ -1,0 +1,293 @@
+---
+import { actions } from "astro:actions";
+import Notice from "../../components/Notice.astro";
+import Admin from "../../layouts/Admin.astro";
+import { canWrite } from "../../lib/auth/staff";
+import type { HubSpotPipeline } from "../../lib/hubspot/client";
+import { BOOKING_STATUSES, CUSTOM_DEAL_PROPERTIES } from "../../lib/hubspot/sync";
+import { getHubSpotConfig, hubSpotClient, integrationStatus, listJobs, type JobListItem } from "../../lib/sync/db";
+import { MAX_ATTEMPTS } from "../../lib/sync/worker";
+
+// HubSpot and email: what is set up, what is waiting, and what failed.
+const results = [
+  { result: Astro.getActionResult(actions.saveHubSpotSettings), done: "saved" },
+  { result: Astro.getActionResult(actions.retrySyncJob), done: "retry" },
+];
+for (const { result, done } of results) {
+  if (result?.data?.ok) return Astro.redirect(`/admin/sync?done=${done}`);
+}
+const ran = Astro.getActionResult(actions.runSyncNow);
+const problem = [...results.map((r) => r.result), ran]
+  .map((result) => result?.error?.message ?? (result?.data && !result.data.ok ? result.data.message : null))
+  .find((message) => message);
+
+const staff = Astro.locals.staff;
+const isAdmin = staff?.role === "admin";
+const canEdit = canWrite(staff);
+const status = integrationStatus();
+const [config, { open, recent }] = await Promise.all([getHubSpotConfig(), listJobs()]);
+
+// Live from HubSpot when the token is set: the pipelines to choose from, and
+// which of the app's custom deal properties exist.
+let pipelines: HubSpotPipeline[] = [];
+let missingProperties: string[] = [];
+let hubspotProblem: string | null = null;
+const client = hubSpotClient();
+if (client) {
+  try {
+    const [found, names] = await Promise.all([client.dealPipelines(), client.dealPropertyNames()]);
+    pipelines = found;
+    missingProperties = CUSTOM_DEAL_PROPERTIES.filter((p) => !names.has(p.name)).map((p) => p.name);
+  } catch {
+    hubspotProblem =
+      "HubSpot could not be reached with the saved token. Check that the token is valid and has the CRM scopes.";
+  }
+}
+const chosenPipeline = pipelines.find((p) => p.id === config?.pipeline_id) ?? pipelines[0];
+
+const waiting = open.filter((job) => !job.failed_at);
+const gaveUp = open.filter((job) => job.failed_at);
+const FLASH: Record<string, string> = {
+  saved: "HubSpot settings saved. Waiting updates will go out on the next run.",
+  retry: "That job will be tried again on the next run.",
+};
+const flash = Astro.url.searchParams.get("done");
+
+const STATUS_LABEL = {
+  pending: "Registered, not paid",
+  deposit_paid: "Deposit paid",
+  paid_in_full: "Paid in full",
+  canceled: "Canceled",
+  refunded: "Refunded",
+} as const;
+const TEMPLATE_LABEL: Record<string, string> = {
+  traveler_registered: "Email to traveler: registered, with booking link",
+  traveler_new_link: "Email to traveler: new booking link",
+  traveler_booking_confirmed: "Email to traveler: place confirmed",
+  traveler_payment_received: "Email to traveler: payment received",
+  staff_new_booking: "Email to staff: new registration",
+  staff_payment_received: "Email to staff: payment received",
+  staff_document_received: "Email to staff: document to review",
+  staff_sync_failed: "Email to staff: a sync failed",
+};
+const what = (job: JobListItem) =>
+  job.kind === "hubspot"
+    ? "HubSpot update"
+    : (TEMPLATE_LABEL[String(job.payload.template)] ?? "Email");
+const when = new Intl.DateTimeFormat("en-US", {
+  month: "short",
+  day: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+  timeZone: "America/New_York",
+  timeZoneName: "short",
+});
+const time = (value: string | null) => (value ? when.format(new Date(value)) : "");
+const input = "w-full border border-warm-light bg-white px-3 py-2 font-light text-charcoal disabled:bg-cream-dark";
+---
+
+<Admin title="Sync">
+  {flash && FLASH[flash] && <Notice kind="success">{FLASH[flash]}</Notice>}
+  {ran?.data?.ok && <Notice kind="success">Queue run finished: {ran.data.note}.</Notice>}
+  {problem && <Notice kind="error">{problem}</Notice>}
+
+  <p class="max-w-prose text-sm text-warm-mid">
+    HubSpot updates and emails are queued when something happens to a booking, and sent a few
+    minutes later. A traveler never waits on them. A failure is retried with a longer wait each
+    time, up to {MAX_ATTEMPTS} tries, then stops and shows here.
+  </p>
+
+  <dl class="mt-6 grid max-w-3xl gap-4 sm:grid-cols-3">
+    <div class="border border-cream-dark bg-white p-4">
+      <dt class="text-xs uppercase tracking-wider text-warm-mid">Waiting</dt>
+      <dd class="mt-1 font-sans text-2xl font-light text-dark" data-testid="sync-waiting">{waiting.length}</dd>
+    </div>
+    <div class="border border-cream-dark bg-white p-4">
+      <dt class="text-xs uppercase tracking-wider text-warm-mid">Stopped after failing</dt>
+      <dd class:list={["mt-1 font-sans text-2xl font-light", gaveUp.length > 0 ? "text-orange" : "text-dark"]} data-testid="sync-failed">
+        {gaveUp.length}
+      </dd>
+    </div>
+    <div class="border border-cream-dark bg-white p-4">
+      <dt class="text-xs uppercase tracking-wider text-warm-mid">Set up</dt>
+      <dd class="mt-1 text-sm text-dark">
+        HubSpot: {status.hubspotToken && config ? "yes" : "not yet"}
+        <span class="block">Email: {status.emailKey && status.emailFrom ? "yes" : "not yet"}</span>
+      </dd>
+    </div>
+  </dl>
+
+  {
+    canEdit && (
+      <form method="POST" action={actions.runSyncNow} class="mt-6">
+        <button type="submit" class="cursor-pointer border border-dark px-5 py-2 text-sm font-medium uppercase tracking-[0.15em] text-dark hover:bg-dark hover:text-white">
+          Run the queue now
+        </button>
+      </form>
+    )
+  }
+
+  <section class="mt-12 max-w-3xl">
+    <h2 class="text-2xl">HubSpot</h2>
+    {hubspotProblem && <Notice kind="error">{hubspotProblem}</Notice>}
+    {
+      !status.hubspotToken ? (
+        <p class="mt-2 text-sm text-warm-mid">
+          No HubSpot token is set, so bookings are not sent to HubSpot yet. Updates wait in the
+          queue and go out once it is set. See the README under "HubSpot and email".
+        </p>
+      ) : pipelines.length > 0 ? (
+        <>
+          <p class="mt-2 text-sm text-warm-mid">
+            Each booking becomes one deal. Choose the pipeline, and the stage a deal sits in for
+            each booking status.
+            {!config && " Nothing is sent to HubSpot until this is saved."}
+          </p>
+          <form method="POST" action={actions.saveHubSpotSettings} class="mt-4 space-y-4">
+            <label class="block text-sm font-medium text-dark">
+              Pipeline
+              <select name="pipeline_id" class={`${input} mt-1`} disabled={!isAdmin}>
+                {pipelines.map((pipeline) => (
+                  <option value={pipeline.id} selected={pipeline.id === chosenPipeline?.id}>
+                    {pipeline.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div class="grid gap-4 sm:grid-cols-2">
+              {BOOKING_STATUSES.map((bookingStatus) => (
+                <label class="block text-sm font-medium text-dark">
+                  {STATUS_LABEL[bookingStatus]}
+                  <select name={`stage_${bookingStatus}`} class={`${input} mt-1`} disabled={!isAdmin}>
+                    <option value="">Choose a stage</option>
+                    {pipelines.map((pipeline) => (
+                      <optgroup label={pipeline.label}>
+                        {pipeline.stages.map((stage) => (
+                          <option value={stage.id} selected={config?.pipeline_id === pipeline.id && config.stages[bookingStatus] === stage.id}>
+                            {stage.label}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                </label>
+              ))}
+            </div>
+            {isAdmin ? (
+              <button type="submit" class="cursor-pointer bg-dark px-6 py-2 text-sm font-medium uppercase tracking-[0.15em] text-white hover:bg-orange">
+                Save
+              </button>
+            ) : (
+              <p class="text-xs text-warm-mid">Only an admin can change this.</p>
+            )}
+          </form>
+
+          {missingProperties.length > 0 && (
+            <div class="mt-8 border-l-2 border-warm-light bg-cream-dark px-5 py-4 text-sm">
+              <p class="font-medium text-dark">Deal properties not in HubSpot yet</p>
+              <p class="mt-1 text-warm-mid">
+                Deals still sync without these; the values are simply left out. To fill them in,
+                create each one in HubSpot under Settings, Properties, Deal properties, with
+                exactly this internal name. This app never creates properties itself.
+              </p>
+              <ul class="mt-3 space-y-1">
+                {CUSTOM_DEAL_PROPERTIES.filter((p) => missingProperties.includes(p.name)).map((p) => (
+                  <li>
+                    <span class="font-mono text-xs text-dark">{p.name}</span>: {p.label} ({p.type})
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </>
+      ) : null
+    }
+  </section>
+
+  <section class="mt-12 max-w-3xl">
+    <h2 class="text-2xl">Email</h2>
+    <p class="mt-2 text-sm text-warm-mid">
+      {status.emailKey && status.emailFrom
+        ? `Sent from ${status.emailFrom}. Staff notices go to ${status.staffTo}.`
+        : `Email is not set up yet, so emails wait in the queue. It needs a Resend key and a from address; see the README. Staff notices will go to ${status.staffTo}.`}
+    </p>
+  </section>
+
+  <section class="mt-12">
+    <h2 class="text-2xl">Waiting and stopped</h2>
+    <div class="mt-3 overflow-x-auto">
+      <table class="w-full min-w-[48rem] text-left text-sm">
+        <thead class="border-b border-warm-light text-xs uppercase tracking-wider text-warm-mid">
+          <tr>
+            <th scope="col" class="py-2 pr-4 font-medium">What</th>
+            <th scope="col" class="py-2 pr-4 font-medium">Booking</th>
+            <th scope="col" class="py-2 pr-4 font-medium">State</th>
+            <th scope="col" class="py-2 font-medium">Last error</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-cream-dark">
+          {
+            [...gaveUp, ...waiting].map((job) => (
+              <tr data-job={job.kind}>
+                <td class="py-3 pr-4 text-dark">{what(job)}</td>
+                <td class="py-3 pr-4">
+                  {job.bookings && job.booking_id ? (
+                    <a class="underline decoration-orange underline-offset-4" href={`/admin/bookings/${job.booking_id}`}>
+                      {job.bookings.reference}
+                    </a>
+                  ) : (
+                    ""
+                  )}
+                </td>
+                <td class="py-3 pr-4">
+                  {job.failed_at ? (
+                    <span class="font-medium text-orange">Stopped after {job.attempts} tries</span>
+                  ) : job.attempts === 0 ? (
+                    "Waiting for its first try"
+                  ) : (
+                    `Tried ${job.attempts} of ${MAX_ATTEMPTS}; next ${time(job.next_run_at)}`
+                  )}
+                  {canEdit && (job.failed_at || job.attempts > 0) && (
+                    <form method="POST" action={actions.retrySyncJob} class="mt-1">
+                      <input type="hidden" name="job_id" value={job.id} />
+                      <button type="submit" class="cursor-pointer text-xs underline underline-offset-4">
+                        Retry now
+                      </button>
+                    </form>
+                  )}
+                </td>
+                <td class="py-3 text-warm-mid">{job.last_error}</td>
+              </tr>
+            ))
+          }
+          {
+            open.length === 0 && (
+              <tr>
+                <td colspan="4" class="py-6 text-warm-mid">Nothing is waiting.</td>
+              </tr>
+            )
+          }
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  {
+    recent.length > 0 && (
+      <section class="mt-12">
+        <h2 class="text-2xl">Recently done</h2>
+        <ul class="mt-3 divide-y divide-cream-dark border-y border-cream-dark text-sm">
+          {recent.map((job) => (
+            <li class="flex flex-wrap justify-between gap-x-4 py-2">
+              <span>
+                <span class="text-dark">{what(job)}</span>
+                {job.bookings && <span class="text-warm-mid">, {job.bookings.reference}</span>}
+              </span>
+              <span class="text-warm-mid">{time(job.completed_at)}</span>
+            </li>
+          ))}
+        </ul>
+      </section>
+    )
+  }
+</Admin>

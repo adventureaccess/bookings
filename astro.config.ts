@@ -49,6 +49,11 @@ export default defineConfig({
       // Milestone 5
       HUBSPOT_ACCESS_TOKEN: envField.string({ ...secret, optional: true }),
       RESEND_API_KEY: envField.string({ ...secret, optional: true }),
+      // Who emails come from, e.g. "Adventure Access <bookings@mail.adventure-access.com>".
+      // Its domain must be verified in Resend.
+      EMAIL_FROM: envField.string({ ...serverPublic, optional: true }),
+      // Where staff notices go. Defaults to info@adventure-access.com.
+      STAFF_NOTIFY_EMAIL: envField.string({ ...serverPublic, optional: true }),
       // Milestone 6
       TURNSTILE_SITE_KEY: envField.string({ ...serverPublic, optional: true }),
       TURNSTILE_SECRET_KEY: envField.string({ ...secret, optional: true }),

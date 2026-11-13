@@ -84,6 +84,13 @@ async function createDeparture(tripId, policyId, seats) {
 }
 
 async function removeDeparture(id) {
+  // The bookings queued HubSpot and email jobs. Remove those first, so a
+  // test booking is never sent anywhere.
+  const bookings = await must(db.from("bookings").select("id").eq("departure_id", id), "read test bookings");
+  const ids = bookings.map((b) => b.id);
+  if (ids.length > 0) {
+    await must(db.from("sync_jobs").delete().in("booking_id", ids), "delete test jobs");
+  }
   await must(db.from("bookings").delete().eq("departure_id", id), "delete test bookings");
   await must(db.from("departures").delete().eq("id", id), "delete test departure");
 }
