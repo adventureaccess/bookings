@@ -1,6 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import type { APIRoute } from "astro";
 import { CRON_SECRET } from "astro:env/server";
+import { allowRequest, callerAddress } from "../../../lib/rate-limit";
 import { workerDeps } from "../../../lib/sync/db";
 import { runSyncJobs } from "../../../lib/sync/worker";
 
@@ -25,8 +26,11 @@ function secretMatches(given: string | null): boolean {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-export const POST: APIRoute = async ({ request, url }) => {
+export const POST: APIRoute = async ({ request, url, clientAddress }) => {
   if (!CRON_SECRET) return json(503, { error: "cron not configured" });
+  if (!(await allowRequest("cron", callerAddress({ clientAddress })))) {
+    return json(429, { error: "too many requests" });
+  }
   if (!secretMatches(request.headers.get("x-cron-secret"))) return json(401, { error: "unauthorized" });
 
   const report = await runSyncJobs(await workerDeps(url.origin));

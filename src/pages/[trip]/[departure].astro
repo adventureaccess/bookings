@@ -1,5 +1,6 @@
 ---
 import { actions } from "astro:actions";
+import { TURNSTILE_SECRET_KEY, TURNSTILE_SITE_KEY } from "astro:env/server";
 import Field from "../../components/Field.astro";
 import Itinerary from "../../components/Itinerary.astro";
 import Notice from "../../components/Notice.astro";
@@ -48,6 +49,8 @@ const count = partySize(
   departure.seats_left,
 );
 const plan = paymentPlan(departure, count);
+// The person check is shown only when both of its keys are set.
+const turnstileSiteKey = TURNSTILE_SITE_KEY && TURNSTILE_SECRET_KEY ? TURNSTILE_SITE_KEY : null;
 const hasItinerary = readItinerary(departure.itinerary).length > 0;
 const dates = formatDateRange(departure.start_date, departure.end_date);
 
@@ -238,6 +241,15 @@ const describedBy = (name: string, hasHelp = false) =>
                   )}
                 </div>
               </section>
+
+              {
+                turnstileSiteKey && (
+                  <div>
+                    <div class="cf-turnstile" data-sitekey={turnstileSiteKey} data-theme="light" data-testid="turnstile" />
+                    <script is:inline src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer />
+                  </div>
+                )
+              }
 
               <div>
                 <button type="submit" class="cursor-pointer bg-dark px-10 py-3 text-sm font-medium uppercase tracking-[0.15em] text-white transition-colors hover:bg-orange">

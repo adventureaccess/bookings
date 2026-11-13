@@ -2,7 +2,7 @@
 
 Takes a traveler from a trip page to a paid deposit, recorded in Stripe and HubSpot. The full brief is in [CLAUDE.md](CLAUDE.md). This README covers running it.
 
-Status: milestone 5 (group itinerary and roster). Staff build a trip for a group from a tour in the library, edit its itinerary and send the group a private link. Each traveler sees the itinerary there, registers themselves and pays. Each traveler also hands in their insurance proof and passport copy and signs the waiver there, and staff review them. Staff see a roster per trip. Each booking is queued for HubSpot and for emails to the traveler and staff. Stripe is in test mode, and Google Drive, HubSpot and email are not connected yet.
+Status: milestone 8 (admin finish and launch prep). Staff build a trip for a group from a tour in the library, edit its itinerary and send the group a private link. Each traveler sees the itinerary there, registers themselves and pays. Each traveler also hands in their insurance proof and passport copy and signs the waiver there, and staff review them. Staff see a roster per trip. Each booking is queued for HubSpot and for emails to the traveler and staff. Stripe is in test mode, and Google Drive, HubSpot and email are not connected yet.
 
 Built with Astro (server-rendered), hosted on Netlify, with a Supabase Postgres database.
 
@@ -185,7 +185,7 @@ npx supabase db push
 
 `--dry-run` lists what would be applied. Read it before the real push, and check the project ref is the dev project. To add a migration, run `npx supabase migration new <name>` and fill in the file it creates; do not edit one that has been applied.
 
-The dev project is "Bookings" (ref `pvfnlahywytptizpgkwo`). The thirteen migrations in this folder are already applied there, and the filenames match the versions recorded in the database, so `db push` only sends new ones.
+The dev project is "Bookings" (ref `pvfnlahywytptizpgkwo`). The fourteen migrations in this folder are already applied there, and the filenames match the versions recorded in the database, so `db push` only sends new ones.
 
 ## Hosting on Netlify
 
@@ -196,6 +196,21 @@ The app is its own Netlify project, `adventure-access-bookings`, separate from t
 - The custom domain `book.adventure-access.com` is not attached yet.
 
 Security headers are set in two places that must agree: `src/middleware.ts` for server-rendered pages and `netlify.toml` for static files. A test checks they match.
+
+## Security headers, bot check and rate limits
+
+**Headers.** The list is in `src/lib/security-headers.ts`. The Content Security Policy allows scripts and styles from this site only, plus Cloudflare Turnstile, and allows forms to post only to this site, Stripe Checkout, Supabase and Google sign-in. Pages must not use inline `<script>` or `style=""`; the build is set to link stylesheets, never inline them. The policy is left off under `npm run dev`, because the dev server injects inline scripts, so check a new page on its Deploy Preview with the browser console open.
+
+**Turnstile.** The registration form shows Cloudflare's check and the server verifies it, once both `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY` are set in Netlify. Create the widget in the Cloudflare dashboard under Turnstile, with the site's hostname. With either key missing the check is off and only the honeypot and rate limits apply.
+
+**Rate limits.** Kept in Postgres (`rate_limits`, `check_rate_limit`). Per address, per ten minutes: 40 registration posts, 20 payment starts, 30 uploads, 30 waiver signatures, 20 staff sign-in starts, 60 cron calls. The numbers are in `src/lib/rate-limit-rules.ts`. Only a hash of the address is stored. Limits are off under `npm run dev`. If the database cannot be reached the request is let through, so a database problem never locks travelers out.
+
+## Export and activity
+
+- **Admin, Bookings, "Download all as CSV"** and **Roster, "Download this group as CSV"**: one row per traveler. Money is on the first row of each booking only, so a column can be summed. Cells that look like formulas are written as text.
+- **Admin, Activity**: every staff change and every export, with who and when. Each booking page shows its own.
+
+See `docs/runbook.md` for launch steps and what to do when something goes wrong, and `docs/security-checklist.md` for what is checked and what is still open.
 
 ## Checks
 
@@ -257,6 +272,9 @@ Neither changes any Windows setting, and neither affects Netlify or CI, which ru
 | `src/middleware.ts` | Security headers and the staff gate |
 | `src/lib/auth/` | Who counts as staff, and resolving the signed-in staff member |
 | `src/lib/admin/db.ts` | Admin data access (service role, after the role check) |
+| `src/lib/admin/export.ts`, `src/lib/admin/reports.ts` | The CSV export and the activity log |
+| `src/lib/security-headers.ts`, `src/lib/rate-limit*.ts`, `src/lib/turnstile.ts` | Headers, rate limits and the bot check |
+| `docs/` | The runbook, the security checklist and each milestone's pull request notes |
 | `src/lib/bookings/` | Booking form validation, payment plan, access tokens, and the calls to the booking SQL functions |
 | `src/lib/hubspot/`, `src/lib/email/`, `src/lib/sync/` | The HubSpot client and sync, the email templates and sender, and the queue worker |
 | `src/lib/documents/`, `src/lib/drive/` | Upload checks, file naming, the Drive uploader, waivers and document review |

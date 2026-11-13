@@ -73,7 +73,13 @@ const sum = (list: typeof roster, pick: (b: (typeof roster)[number]) => number) 
     </div>
   </dl>
 
-  <div class="mt-10 overflow-x-auto">
+  <p class="mt-8">
+    <a href={`/admin/export/bookings.csv?departure=${id}`} class="inline-block border border-dark px-5 py-2 text-sm font-medium uppercase tracking-[0.15em] text-dark transition-colors hover:bg-dark hover:text-white">
+      Download this group as CSV
+    </a>
+  </p>
+
+  <div class="mt-6 overflow-x-auto">
     <table class="w-full min-w-[52rem] text-left text-sm">
       <thead class="border-b border-warm-light text-xs uppercase tracking-wider text-warm-mid">
         <tr>

@@ -141,7 +141,7 @@ One branch and PR per milestone, each with a preview deploy. Stop after each one
 5. **Group itinerary and roster.** Built; in review. Itinerary on a departure, copied from the tour or from another departure and edited in the admin; group name; the group's page showing itinerary, price and schedule above the registration form; a roster in the admin showing each traveler in the group with what they have paid, what they owe and their documents. Done when Will builds a Ladakh group trip from the library tour, changes two days, the private link shows that group's itinerary, and two people who register separately both appear on the roster.
 6. **Documents.** Built; in review, with a local stand-in until the Shared Drive is connected. Each traveler's insurance and passport uploads and signed waiver on their own booking page, staff review, files in the restricted Shared Drive. Done when a traveler uploads insurance and a passport copy and signs the waiver, the files appear in the Shared Drive and nowhere else, staff reject it with a note, and the traveler sees what is still needed.
 7. **HubSpot and email.** Built; in review, tested against stand-ins until the HubSpot token and the Resend key exist. Sync queue and worker, contacts, deal, associations, emails, retry from admin. Done when a test booking appears as a deal with all travelers associated, and a forced HubSpot failure retries and then succeeds.
-8. **Admin finish and launch prep.** Booking detail, activity log, CSV export, security headers, Turnstile, rate limits, README and runbook. Done when the security checklist is ticked and Will approves going live on one pilot group trip.
+8. **Admin finish and launch prep.** Built; in review. Booking detail, activity log, CSV export, security headers, Turnstile, rate limits, README and runbook. Done when the security checklist is ticked and Will approves going live on one pilot group trip.
 
 Not in v1 (design for, don't build): per-person prices or dates, automatic collection of scheduled payments, reminders, AutoPay, late fees, auto-cancel, visa handling, flight details, waitlists, rooming lists, single supplements, affiliates, multi-currency, a traveler mobile app.
 
@@ -153,6 +153,7 @@ Not in v1 (design for, don't build): per-person prices or dates, automatic colle
 - Waiver: Will supplies the Travel Consent PDF. Each traveler signs it in the app (typed full name, time, IP). Alternative: download, sign on paper and upload the signed copy.
 - Dependents: a person may register and pay for dependents on their own booking, and accepts the policy and waiver for each of them.
 - Document storage: a restricted Google Shared Drive, decided Nov 12. Will sets it up before milestone 6.
+- Database: one shared Supabase project through testing; a clean project at launch, and the test one is deleted afterward (Will, Nov 13, 2026). Steps are in `docs/runbook.md`.
 - Document retention: files stay in the Shared Drive until staff delete them. The admin lists trips that ended more than 30 days ago and still have passport copies.
 - Hosting: Netlify (decided Nov 11, 2026). Email: Resend.
 - HubSpot pipeline: the portal has one, "Sales Pipeline", with the standard stages. An admin picks the pipeline and a stage per booking status under Sync; nothing is sent until then. Suggested with the existing pipeline: registered, not paid = Contract Sent; deposit paid and paid in full = Closed Won; canceled and refunded = Closed Lost. Creating a "Trip Bookings" pipeline is Will's call.
@@ -171,7 +172,7 @@ Not in v1 (design for, don't build): per-person prices or dates, automatic colle
 - **Policy acceptance.** Settled Nov 12: each traveler registers and accepts for themselves. Only someone registering dependents accepts on their behalf, and the checkbox wording says so.
 - **Solo travelers.** Website prices are double occupancy and single supplements are out of v1. Default: charge the departure price and show "We will confirm rooming with you."
 - **Cron frequency.** Confirm before milestone 4 that the Netlify plan allows a five-minute scheduled function and enough function invocations for it.
-- **Bot protection.** Until Turnstile and rate limits land in milestone 8, keep real departures private.
+- **Bot protection.** Rate limits are in. Turnstile is built but off until Will creates the widget in Cloudflare and enters `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY` in Netlify. Keep real departures private until then.
 
 ## Working rules
 

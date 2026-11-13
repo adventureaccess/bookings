@@ -1,7 +1,9 @@
 import { timingSafeEqual } from "node:crypto";
 import type { APIRoute } from "astro";
 import { CRON_SECRET } from "astro:env/server";
+import { allowRequest, callerAddress } from "../../../lib/rate-limit";
 import { deleteExpiredHolds } from "../../../lib/payments/db";
+import { createServiceClient } from "../../../lib/supabase/service";
 
 /**
  * Housekeeping, called by the scheduled function in netlify/functions with
@@ -25,11 +27,17 @@ function secretMatches(given: string | null): boolean {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-export const POST: APIRoute = async ({ request }) => {
+export const POST: APIRoute = async ({ request, clientAddress }) => {
   if (!CRON_SECRET) return json(503, { error: "cron not configured" });
+  if (!(await allowRequest("cron", callerAddress({ clientAddress })))) {
+    return json(429, { error: "too many requests" });
+  }
   if (!secretMatches(request.headers.get("x-cron-secret"))) return json(401, { error: "unauthorized" });
 
   const deleted = await deleteExpiredHolds();
   if (deleted === null) return json(500, { error: "cleanup failed" });
+  // Rate limit counters older than a day are of no use either.
+  const { error } = await createServiceClient().rpc("delete_old_rate_limits");
+  if (error) console.error("[cron] rate limit cleanup failed", { code: error.code ?? "unknown" });
   return json(200, { deleted });
 };

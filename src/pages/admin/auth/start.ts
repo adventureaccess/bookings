@@ -1,9 +1,13 @@
 import type { APIRoute } from "astro";
 import { STAFF_DOMAIN } from "../../../lib/auth/staff";
+import { allowRequest, callerAddress } from "../../../lib/rate-limit";
 import { createSessionClient } from "../../../lib/supabase/session";
 
 /** Starts Google sign-in. POST only, so a link cannot trigger it. */
-export const POST: APIRoute = async ({ request, cookies, url, redirect }) => {
+export const POST: APIRoute = async ({ request, cookies, url, redirect, clientAddress }) => {
+  if (!(await allowRequest("staff_sign_in", callerAddress({ clientAddress })))) {
+    return redirect("/admin/login?error=busy");
+  }
   const supabase = createSessionClient(request, cookies);
   const { data, error } = await supabase.auth.signInWithOAuth({
     provider: "google",

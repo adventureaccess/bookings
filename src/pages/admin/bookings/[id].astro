@@ -4,6 +4,7 @@ import AdminBookingDocuments from "../../../components/AdminBookingDocuments.ast
 import Notice from "../../../components/Notice.astro";
 import Admin from "../../../layouts/Admin.astro";
 import { getBookingDetail } from "../../../lib/admin/db";
+import { actionLabel, activityDetails, listActivity } from "../../../lib/admin/reports";
 import { canWrite } from "../../../lib/auth/staff";
 import { formatDate, formatDateRange } from "../../../lib/dates";
 import { listDocumentsForBookings } from "../../../lib/documents/db";
@@ -44,6 +45,7 @@ const payments = [...booking.payments].sort((a, b) => a.created_at.localeCompare
 const credits = [...booking.booking_adjustments].sort((a, b) => a.created_at.localeCompare(b.created_at));
 const travelers = [...booking.travelers].sort((a, b) => Number(b.is_lead) - Number(a.is_lead));
 const { documents, signatures } = await listDocumentsForBookings([booking.id]);
+const activity = await listActivity({ entityId: booking.id, limit: 50 });
 const today = new Date().toISOString().slice(0, 10);
 const holdMinutes = booking.seat_holds
   ? Math.ceil((Date.parse(booking.seat_holds.expires_at) - Date.now()) / 60_000)
@@ -358,6 +360,31 @@ const answerText = (answers: unknown): string => {
     signatures={signatures}
     canEdit={canEdit}
   />
+
+  <section class="mt-12 max-w-3xl">
+    <h2 class="text-2xl">Activity</h2>
+    {
+      activity.length === 0 ? (
+        <p class="mt-3 text-sm text-warm-mid">No staff changes on this booking yet.</p>
+      ) : (
+        <ul class="mt-3 divide-y divide-cream-dark border-y border-cream-dark text-sm">
+          {activity.map((entry) => (
+            <li class="flex flex-wrap justify-between gap-x-4 py-2.5">
+              <span>
+                <span class="text-dark">{actionLabel(entry.action)}</span>
+                {activityDetails(entry.data) && (
+                  <span class="block text-xs text-warm-mid">{activityDetails(entry.data)}</span>
+                )}
+              </span>
+              <span class="text-xs text-warm-mid">
+                {entry.actor}, {formatDate(entry.created_at.slice(0, 10))}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )
+    }
+  </section>
 
   {
     canEdit && (

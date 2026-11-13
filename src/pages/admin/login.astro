@@ -9,6 +9,7 @@ const MESSAGES: Record<string, string> = {
     "That Google account is not on the staff list. Sign in with your Adventure Access account, or ask an admin to add you.",
   callback: "Sign-in did not complete. Try again.",
   start: "Sign-in could not start. Try again in a minute.",
+  busy: "Too many sign-in attempts from this connection. Wait a few minutes and try again.",
 };
 const error = MESSAGES[Astro.url.searchParams.get("error") ?? ""];
 const signedOut = Astro.url.searchParams.has("signed_out");
