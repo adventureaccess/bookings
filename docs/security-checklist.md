@@ -45,7 +45,7 @@ Each requirement from the brief, with where it is enforced and how it is checked
 - [x] **Turnstile on the registration form, checked on the server.** Built and unit tested against a stand-in. A request with no token, a bad token or an unreachable Cloudflare is refused.
 - [ ] **Turnstile switched on.** Needs `TURNSTILE_SITE_KEY` and `TURNSTILE_SECRET_KEY` from Will's Cloudflare account. Until both are set the check is off; keep real departures private.
 - [x] **Rate limits, Postgres-backed,** on the registration form, starting a payment, uploads, signing the waiver, starting staff sign-in and the cron routes. The key is a hash of the address, never the address. Counting and checking are one statement. `tests/db/rate-limit.test.ts`.
-- [ ] **Rate limits seen working on the deployed site.** They are off in local development. To be checked on the Deploy Preview.
+- [x] **Rate limits seen working on the deployed site.** On the Deploy Preview, 23 staff sign-in starts from one address: 20 went through, 3 were refused.
 
 ## Documents
 
@@ -53,7 +53,7 @@ Each requirement from the brief, with where it is enforced and how it is checked
 - [x] **Type checked from the file's contents,** 4 MB cap, PDF, JPG or PNG only.
 - [x] **No passport number, date of birth, medical or dietary detail has a field or a column.**
 - [x] **Documents are never in logs, emails or HubSpot.** Emails say only that a document was handed in.
-- [ ] **A real upload to the Shared Drive.** Tested against a local stand-in only. The keys are now in Netlify; to be run on the deployed site.
+- [ ] **A real upload to the Shared Drive.** Tried on the Deploy Preview on Nov 13 with a test PDF: Google refused it and nothing was saved. Admin, Settings, "Check the Drive connection" says which step fails. Open until that says Connected and one upload lands.
 - [ ] **The drive is staff only with outside sharing off, and the service account can only add files.** Will to confirm in Google.
 - [ ] **Retention.** How long files are kept after a trip, and who deletes them. Default: staff delete; the admin lists trips over 30 days past.
 
@@ -63,7 +63,7 @@ Each requirement from the brief, with where it is enforced and how it is checked
 - [x] **HSTS, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`, Permissions-Policy, Cross-Origin-Opener-Policy.**
 - [x] **Same headers on server pages and static files.** A test compares `src/lib/security-headers.ts` with `netlify.toml`.
 - [x] **Cross-site form posts refused** (`checkOrigin`).
-- [ ] **No policy violations in a real browser.** The policy is not applied in local development, so this is checked on the Deploy Preview.
+- [x] **No policy violations in a real browser** from the app's own pages, checked on the Deploy Preview (departure list, sign-in, not found, registration, booking page). The only two console errors are Netlify's own preview toolbar being blocked, which is not on the production site. The signed-in admin pages are still to be clicked through by Will.
 
 ## Jobs, logs and dependencies
 
@@ -71,7 +71,7 @@ Each requirement from the brief, with where it is enforced and how it is checked
 - [x] **Logs never include full emails, phone numbers or tokens.** Database errors log the code only; HubSpot and email errors carry a status only (unit tested).
 - [x] **The CSV export cannot run formulas.** Cells starting with `=`, `+`, `-` or `@` are written as text. Unit tested.
 - [x] **Pinned dependency versions, Dependabot on, `npm audit` clean at high and critical in CI.**
-- [ ] **Scheduled functions seen running on Netlify.** Will to look at the function logs, or tell me to.
+- [ ] **Scheduled functions seen running on Netlify.** They run on schedule, but on Nov 13 both answered 500 with "URL or CRON_SECRET is not set". `CRON_SECRET` is not reaching them: check it is spelled exactly, its scope includes Functions, and redeploy.
 
 ## Before real travelers
 

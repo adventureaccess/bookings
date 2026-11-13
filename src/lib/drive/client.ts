@@ -146,6 +146,89 @@ export async function uploadToDrive(upload: DriveUpload): Promise<{ id: string }
   return { id: result.id };
 }
 
+export interface DriveCheck {
+  ok: boolean;
+  /** A plain sentence for staff. Never contains the key or a file's contents. */
+  message: string;
+}
+
+/**
+ * Tries the connection without adding a file: signs in as the service
+ * account, then looks at the folder. Says which step failed.
+ */
+export async function checkDriveConnection(
+  account: ServiceAccount,
+  folderId: string,
+  fetchImpl: Fetch = fetch,
+): Promise<DriveCheck> {
+  let token: string;
+  try {
+    token = await getAccessToken(account, fetchImpl);
+  } catch (error) {
+    if (error instanceof DriveError && error.status) {
+      return {
+        ok: false,
+        message: `Google did not accept the service account key (status ${error.status}). The key may be deleted or disabled, or the Drive API is not switched on for its project.`,
+      };
+    }
+    return {
+      ok: false,
+      message:
+        "The service account key could not be used to sign in. It may have been cut off or changed when it was pasted. Paste the whole JSON file again.",
+    };
+  }
+
+  let response: Response;
+  try {
+    response = await fetchImpl(
+      `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(folderId)}?supportsAllDrives=true&fields=id,mimeType,driveId,capabilities(canAddChildren)`,
+      { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(15_000) },
+    );
+  } catch {
+    return { ok: false, message: "Google Drive did not answer. Try again in a moment." };
+  }
+  if (response.status === 404) {
+    return {
+      ok: false,
+      message:
+        "The key works, but the service account cannot see that folder. Either the folder ID is wrong, or the service account has not been added to the Shared Drive as a member.",
+    };
+  }
+  if (response.status === 403) {
+    return {
+      ok: false,
+      message:
+        "The key works, but Google refused the request (status 403). Most often the Google Drive API is not enabled for the service account's project.",
+    };
+  }
+  if (!response.ok) {
+    return { ok: false, message: `Google Drive refused the request (status ${response.status}).` };
+  }
+  const folder = (await response.json()) as {
+    mimeType?: unknown;
+    driveId?: unknown;
+    capabilities?: { canAddChildren?: unknown };
+  };
+  if (folder.mimeType !== "application/vnd.google-apps.folder") {
+    return { ok: false, message: "That ID is a file, not a folder or a Shared Drive." };
+  }
+  if (folder.capabilities?.canAddChildren !== true) {
+    return {
+      ok: false,
+      message:
+        "The service account can see the folder but may not add files. Make it a Contributor on the Shared Drive.",
+    };
+  }
+  if (typeof folder.driveId !== "string") {
+    return {
+      ok: false,
+      message:
+        "The folder is in someone's My Drive, not a Shared Drive. A service account cannot store files there. Use a folder in the Shared Drive.",
+    };
+  }
+  return { ok: true, message: "Connected. The service account can add files to the Shared Drive." };
+}
+
 /** Where staff open a file, with their own Google sign-in. */
 export function driveFileUrl(fileId: string): string {
   return `https://drive.google.com/file/d/${encodeURIComponent(fileId)}/view`;

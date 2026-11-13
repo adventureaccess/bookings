@@ -11,6 +11,7 @@ This PR targets `main`.
 - **Strict security headers.** A Content Security Policy with no inline scripts or styles, plus Permissions-Policy and Cross-Origin-Opener-Policy, on server pages and static files alike. Stylesheets are now always linked, never inlined.
 - **CSV export.** All bookings, or one group from its roster. One row per traveler; money on the first row of each booking so a column can be summed. Cells that look like spreadsheet formulas are written as text. Every export is logged.
 - **Activity log.** Admin, Activity: every staff change with who and when. Each booking page shows its own.
+- **Admin, Settings, "Check the Drive connection".** Signs in as the service account and looks at the folder without adding a file, and says which step fails.
 - **Runbook** (`docs/runbook.md`): launch steps, day-to-day tasks, what to do when something goes wrong.
 - **Security checklist** (`docs/security-checklist.md`): each requirement in the brief, where it is enforced, how it is checked, and what is still open.
 - One new migration (two functions on the existing `rate_limits` table), already applied to the dev project.
@@ -32,9 +33,20 @@ This PR targets `main`.
 - **A production build** has no inline styles or scripts from the app's own pages.
 - Typecheck, lint, all tests, build, `check:build`, `check:env` and audit pass.
 
+## Checked on the Deploy Preview
+
+- **Headers:** all seven are served on server pages. The app's own pages raise no policy violations in the browser; the only two console errors are Netlify's preview toolbar being blocked, which production does not have.
+- **Rate limit:** 23 staff sign-in starts from one address; 20 went through, 3 were refused.
+- **The export and activity pages** send a signed-out visitor to sign-in.
+
+## Found while checking
+
+- **A real Drive upload failed.** A test registration worked; uploading a test PDF was refused by Google and nothing was saved. The app's log line is not readable from outside Netlify, so I added the connection check above to name the step.
+- **The scheduled functions run but answer 500:** "URL or CRON_SECRET is not set". The secret is not reaching them.
+
 ## Not verified yet
 
-- The Content Security Policy in a real browser, and a rate limit actually tripping: both only run on a deployed site. I will check them on this PR's Deploy Preview.
+- The signed-in admin pages under the policy (they need a staff sign-in).
 - Turnstile against Cloudflare: needs the keys.
 - Everything listed under "Acceptance checks" in the runbook: a real Stripe test payment, a real Drive upload, HubSpot, email, the scheduled functions.
 

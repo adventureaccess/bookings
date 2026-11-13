@@ -45,7 +45,7 @@ Project configuration, Environment variables, "Contains secret values" ticked fo
 | `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY` | Supabase, Project settings, API | The production project |
 | `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET` | Stripe | Test keys until the last step below |
 | `STRIPE_LIVE_MODE` | you | Set to `true` only together with live keys. A live key without it is refused |
-| `CRON_SECRET` | you | Any long random string |
+| `CRON_SECRET` | you | Any long random string. Scope must include Functions, and it needs a new deploy before the scheduled functions see it |
 | `GOOGLE_SERVICE_ACCOUNT_KEY`, `GOOGLE_DRIVE_FOLDER_ID` | Google Cloud, the Shared Drive | Documents |
 | `HUBSPOT_ACCESS_TOKEN` | HubSpot private app | Scopes: contacts read and write, deals read and write |
 | `RESEND_API_KEY`, `EMAIL_FROM`, `STAFF_NOTIFY_EMAIL` | Resend | The sending domain must be verified |
@@ -71,6 +71,7 @@ Do these with one private test departure and your own email. Each is a milestone
 
 - [ ] **Card payment.** Register, pay the deposit with Stripe test card 4242 4242 4242 4242. The booking shows Deposit paid; the fee is its own line in Stripe. In Stripe, resend the webhook event: nothing changes.
 - [ ] **Offline money.** Record a wire and add a credit on the same booking. The balance is right.
+- [ ] **Drive connection.** Admin, Settings, "Check the Drive connection" says Connected.
 - [ ] **Documents.** Upload insurance and a passport copy, sign the waiver. The files are in the Shared Drive, named by booking reference. Reject one with a note; the traveler's page says what is still needed. Delete the test files from the drive.
 - [ ] **HubSpot.** The booking is a deal in the chosen pipeline with the traveler linked.
 - [ ] **Email.** The traveler gets "registered" with their link; info@ gets the staff notice.
@@ -127,7 +128,7 @@ delete from public.staff where email = '<their work email>';
 
 **Emails are not arriving.** Sync shows whether email is set up and whether jobs are waiting. Check `EMAIL_FROM` uses the verified domain, then Resend's log.
 
-**An upload fails.** Over 4 MB or not a PDF, JPG or PNG: the traveler is told so. Otherwise check the service account is still a member of the Shared Drive and `GOOGLE_DRIVE_FOLDER_ID` is right.
+**An upload fails.** Over 4 MB or not a PDF, JPG or PNG: the traveler is told so. Otherwise open Admin, Settings and press "Check the Drive connection". It signs in as the service account and looks at the folder without adding a file, and says which step fails: the key, the folder ID, the Drive API, or the account's permission.
 
 **"Too many tries. Wait ten minutes."** The rate limit. One address may post the registration form 40 times, start 20 payments, upload 30 files and start 20 staff sign-ins in ten minutes. A whole group registering from one office network could reach the registration limit; it clears by itself. The numbers are in `src/lib/rate-limit-rules.ts`.
 

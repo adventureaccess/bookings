@@ -2,6 +2,7 @@
 import { actions } from "astro:actions";
 import Notice from "../../components/Notice.astro";
 import Admin from "../../layouts/Admin.astro";
+import { checkDocumentStore } from "../../lib/documents/store";
 import { getCardFeeBps } from "../../lib/payments/db";
 import { cardFeeCents, formatFeePercent } from "../../lib/payments/due";
 import { formatUsd } from "../../lib/money";
@@ -13,6 +14,10 @@ const problem = result?.error?.message ?? (result?.data && !result.data.ok ? res
 const feeBps = await getCardFeeBps();
 const isAdmin = Astro.locals.staff?.role === "admin";
 const example = 75000;
+
+// Asked for with ?check=drive. Admins only; it adds no file.
+const driveCheck =
+  isAdmin && Astro.url.searchParams.get("check") === "drive" ? await checkDocumentStore() : null;
 ---
 
 <Admin title="Settings">
@@ -50,4 +55,26 @@ const example = 75000;
       {formatUsd(example)} for the trip and {formatUsd(cardFeeCents(example, feeBps))} in fee.
     </p>
   </section>
+
+  {
+    isAdmin && (
+      <section class="mt-12 max-w-xl border-t border-cream-dark pt-8" id="documents">
+        <h2 class="text-2xl">Document storage</h2>
+        <p class="mt-2 text-sm text-warm-mid">
+          Traveler documents go to the Shared Drive through a service account. This checks that
+          the app can sign in and may add files there. It does not add one.
+        </p>
+        {driveCheck && (
+          <Notice kind={driveCheck.ok ? "success" : "error"}>
+            <span data-testid="drive-check">{driveCheck.message}</span>
+          </Notice>
+        )}
+        <p class="mt-5">
+          <a href="/admin/settings?check=drive#documents" class="inline-block border border-dark px-5 py-2 text-sm font-medium uppercase tracking-[0.15em] text-dark transition-colors hover:bg-dark hover:text-white">
+            Check the Drive connection
+          </a>
+        </p>
+      </section>
+    )
+  }
 </Admin>
