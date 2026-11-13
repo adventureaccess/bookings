@@ -13,6 +13,7 @@ import { requireWriter, UUID } from "./guards";
 import { documentActions } from "./documents";
 import { itineraryActions } from "./itinerary";
 import { paymentActions } from "./payments";
+import { syncActions } from "./sync";
 import {
   createBooking,
   getBookingSummary,
@@ -27,6 +28,7 @@ import {
 } from "../lib/bookings/form";
 import { recallBooking, rememberBooking } from "../lib/bookings/session";
 import { getLeadEmail } from "../lib/payments/db";
+import { enqueueBookingLinkEmail } from "../lib/sync/db";
 import { hashAccessToken, newAccessToken } from "../lib/bookings/token";
 import {
   parseDepartureForm,
@@ -117,6 +119,7 @@ export const server = {
   ...paymentActions,
   ...itineraryActions,
   ...documentActions,
+  ...syncActions,
 
   /**
    * The public booking form. No sign-in: anyone who can see the departure may
@@ -182,6 +185,15 @@ export const server = {
       // A resumed booking keeps the token it already had; see `token` above.
       const pointer = { reference: result.reference, token };
       rememberBooking(context.cookies, pointer);
+      // A new registration gets an email with the link to its booking page.
+      // If queueing fails the traveler still has the page in front of them.
+      if (!result.resumed) {
+        await enqueueBookingLinkEmail(
+          result.booking_id,
+          "traveler_registered",
+          `${context.url.origin}/booking/${result.reference}?t=${token}`,
+        );
+      }
       return { ok: true, ...pointer };
     },
   }),

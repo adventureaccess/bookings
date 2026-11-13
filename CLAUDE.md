@@ -68,7 +68,7 @@ Money is integer cents with a `currency` column (always `usd`). Every table has 
 - `settings` **(Nov 12)**: key, value. Holds the system-wide card fee
 - `activity_log`: actor, entity, entity_id, action, data jsonb
 - `webhook_events`: stripe_event_id (unique), type, processed_at, error
-- `sync_jobs`: kind (hubspot, email), payload jsonb, attempts, last_error, next_run_at
+- `sync_jobs`: kind (hubspot, email), payload jsonb, attempts, last_error, next_run_at, booking_id, completed_at, failed_at. Rows are added by database triggers on bookings and traveler_documents, inside the same transaction as the change
 - `rate_limits`: key, window_start, count **(review)**
 
 Seats available = max_travelers − confirmed travelers − unexpired holds. Check and insert the hold inside one transaction with `select … for update` on the departure row. Availability never depends on the cleanup cron having run. On a group trip the capacity is the size of the group, and each traveler who registers holds one seat; the same rule applies.
@@ -124,7 +124,7 @@ Seats available = max_travelers − confirmed travelers − unexpired holds. Che
 
 **Stripe.** Will's existing account. No Products; Checkout uses `price_data` built from the departure, plus a second line for the card fee. **(review)** Test webhooks point at one stable staging URL, not per-PR preview URLs.
 
-**Email.** One provider, sending from a verified `adventure-access.com` subdomain with SPF, DKIM and DMARC. Traveler: booking confirmed, payment received. Staff (info@adventure-access.com): new booking, payment received, document handed in, failed sync.
+**Email.** One provider, sending from a verified `adventure-access.com` subdomain with SPF, DKIM and DMARC. Traveler: registered (carries the link to their booking page, sent once), booking confirmed, payment received, and a new link when staff send one. Staff (info@adventure-access.com): new booking, payment received, document handed in, failed sync.
 
 ## Design
 
@@ -140,7 +140,7 @@ One branch and PR per milestone, each with a preview deploy. Stop after each one
 4. **Payments.** Built; in review. The system-wide card fee setting, card payment through Stripe Checkout with the fee, webhook with signature check and idempotency, offline payments and voids, credits, the booking page showing what is paid and owed with a pay button, success and canceled pages, hold cleanup cron, and the final balance date made a required field on every departure. Done when a test-mode card payment including the fee reaches `deposit_paid`, replaying the webhook changes nothing, a tampered amount is impossible, and after staff record a wire and a credit the balance is right.
 5. **Group itinerary and roster.** Built; in review. Itinerary on a departure, copied from the tour or from another departure and edited in the admin; group name; the group's page showing itinerary, price and schedule above the registration form; a roster in the admin showing each traveler in the group with what they have paid, what they owe and their documents. Done when Will builds a Ladakh group trip from the library tour, changes two days, the private link shows that group's itinerary, and two people who register separately both appear on the roster.
 6. **Documents.** Built; in review, with a local stand-in until the Shared Drive is connected. Each traveler's insurance and passport uploads and signed waiver on their own booking page, staff review, files in the restricted Shared Drive. Done when a traveler uploads insurance and a passport copy and signs the waiver, the files appear in the Shared Drive and nowhere else, staff reject it with a note, and the traveler sees what is still needed.
-7. **HubSpot and email.** Sync queue and worker, contacts, deal, associations, emails, retry from admin. Done when a test booking appears as a deal with all travelers associated, and a forced HubSpot failure retries and then succeeds.
+7. **HubSpot and email.** Built; in review, tested against stand-ins until the HubSpot token and the Resend key exist. Sync queue and worker, contacts, deal, associations, emails, retry from admin. Done when a test booking appears as a deal with all travelers associated, and a forced HubSpot failure retries and then succeeds.
 8. **Admin finish and launch prep.** Booking detail, activity log, CSV export, security headers, Turnstile, rate limits, README and runbook. Done when the security checklist is ticked and Will approves going live on one pilot group trip.
 
 Not in v1 (design for, don't build): per-person prices or dates, automatic collection of scheduled payments, reminders, AutoPay, late fees, auto-cancel, visa handling, flight details, waitlists, rooming lists, single supplements, affiliates, multi-currency, a traveler mobile app.
@@ -155,7 +155,8 @@ Not in v1 (design for, don't build): per-person prices or dates, automatic colle
 - Document storage: a restricted Google Shared Drive, decided Nov 12. Will sets it up before milestone 6.
 - Document retention: files stay in the Shared Drive until staff delete them. The admin lists trips that ended more than 30 days ago and still have passport copies.
 - Hosting: Netlify (decided Nov 11, 2026). Email: Resend.
-- HubSpot pipeline: reuse an existing one or create "Trip Bookings". Ask first.
+- HubSpot pipeline: the portal has one, "Sales Pipeline", with the standard stages. An admin picks the pipeline and a stage per booking status under Sync; nothing is sent until then. Suggested with the existing pipeline: registered, not paid = Contract Sent; deposit paid and paid in full = Closed Won; canceled and refunded = Closed Lost. Creating a "Trip Bookings" pipeline is Will's call.
+- HubSpot deal properties: none of the six exist yet. The app sends each only once it exists and never creates one.
 - Pilot: one Ladakh Multisport group trip in 2027.
 - Custom questions per trip: YouLi asks "Choose your activities" as free text with a PDF. One optional short-answer question per line covers it.
 - The public departure list stays, for the rare fixed-date trip.

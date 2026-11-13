@@ -22,6 +22,7 @@ const results = [
   { result: Astro.getActionResult(actions.voidPayment), done: "voided" },
   { result: Astro.getActionResult(actions.addCredit), done: "credit" },
   { result: Astro.getActionResult(actions.reviewDocument), done: "document" },
+  { result: Astro.getActionResult(actions.sendNewBookingLink), done: "link" },
   { result: Astro.getActionResult(actions.markDocumentDeleted), done: "file-deleted" },
   { result: Astro.getActionResult(actions.markBookingReviewed), done: "reviewed" },
   { result: Astro.getActionResult(actions.cancelBooking), done: "canceled" },
@@ -53,6 +54,7 @@ const FLASH: Record<string, string> = {
   voided: "Payment voided.",
   credit: "Credit saved.",
   document: "Document review saved.",
+  link: "A new link is on its way to the traveler. The old link no longer works.",
   "file-deleted": "Recorded that the file is deleted.",
   reviewed: "Marked as sorted.",
   canceled: "Booking canceled. Its seats are free again.",
@@ -356,6 +358,27 @@ const answerText = (answers: unknown): string => {
     signatures={signatures}
     canEdit={canEdit}
   />
+
+  {
+    canEdit && (
+      <section class="mt-12 max-w-2xl border-t border-cream-dark pt-8">
+        <h2 class="text-2xl">Booking link</h2>
+        <p class="mt-2 text-sm text-warm-mid">
+          The traveler reaches their booking page with a private link, emailed when they
+          registered. If they have lost it, send a new one. The old link stops working.
+        </p>
+        <details class="mt-4">
+          <summary class="cursor-pointer text-sm text-dark underline underline-offset-4">
+            Send a new link
+          </summary>
+          <form method="POST" action={actions.sendNewBookingLink} class="mt-4">
+            <input type="hidden" name="booking_id" value={booking.id} />
+            <button type="submit" class={button}>Email a new link</button>
+          </form>
+        </details>
+      </section>
+    )
+  }
 
   {
     canEdit && booking.status !== "canceled" && booking.status !== "refunded" && (

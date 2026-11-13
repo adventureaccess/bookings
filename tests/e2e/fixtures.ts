@@ -115,6 +115,11 @@ export async function createTestDeparture(seats: number): Promise<TestDeparture>
 }
 
 export async function removeTestDeparture(id: string): Promise<void> {
+  // The bookings queued HubSpot and email jobs. Remove those first, so a
+  // test booking is never sent anywhere.
+  const bookings = await db().from("bookings").select("id").eq("departure_id", id);
+  const ids = (bookings.data ?? []).map((b) => b.id as string);
+  if (ids.length > 0) await db().from("sync_jobs").delete().in("booking_id", ids);
   await db().from("bookings").delete().eq("departure_id", id);
   await db().from("departures").delete().eq("id", id);
 }

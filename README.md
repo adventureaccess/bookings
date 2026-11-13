@@ -2,7 +2,7 @@
 
 Takes a traveler from a trip page to a paid deposit, recorded in Stripe and HubSpot. The full brief is in [CLAUDE.md](CLAUDE.md). This README covers running it.
 
-Status: milestone 5 (group itinerary and roster). Staff build a trip for a group from a tour in the library, edit its itinerary and send the group a private link. Each traveler sees the itinerary there, registers themselves and pays. Each traveler also hands in their insurance proof and passport copy and signs the waiver there, and staff review them. Staff see a roster per trip. Stripe is in test mode and Google Drive is not connected yet. No HubSpot or email yet.
+Status: milestone 5 (group itinerary and roster). Staff build a trip for a group from a tour in the library, edit its itinerary and send the group a private link. Each traveler sees the itinerary there, registers themselves and pays. Each traveler also hands in their insurance proof and passport copy and signs the waiver there, and staff review them. Staff see a roster per trip. Each booking is queued for HubSpot and for emails to the traveler and staff. Stripe is in test mode, and Google Drive, HubSpot and email are not connected yet.
 
 Built with Astro (server-rendered), hosted on Netlify, with a Supabase Postgres database.
 
@@ -121,6 +121,35 @@ Each traveler handles their own, on their own booking page.
 
 Until those are set, a deployed site tells travelers that uploads are not switched on. On a developer's machine, uploads go to a `.local-documents` folder instead, so the flow can be tried without Drive; that stand-in is stripped from every build and `npm run check:build` fails if it survives.
 
+## HubSpot and email
+
+Nothing is sent to HubSpot or by email while a traveler waits. A change to a booking adds a job to a queue in the same database transaction, and a worker sends it a few minutes later.
+
+- **What queues a job.** A new registration, money arriving, a place being confirmed, a credit, a void, a cancellation, and a document being handed in. Database triggers do this, so no code path can forget.
+- **HubSpot.** Each traveler with their own email becomes a contact, found by email. On a contact that already exists, only empty fields are filled; nothing staff entered is overwritten, and no marketing status is set. Each booking becomes one deal, linked to those contacts, in the pipeline and stage chosen under Sync in the admin. The deal amount is the total less credits.
+- **Deal properties.** The app fills `booking_reference`, `trip_slug`, `departure_date`, `travelers`, `amount_paid` and `booking_app_url` when they exist in HubSpot. It never creates them. Sync lists the ones that are missing, with the type to create.
+- **Emails.** To the traveler: registered (with the link to their booking page), place confirmed, payment received. To staff: new registration, payment received, document to review, and a notice when a job has stopped retrying. Plain text. No email carries a document or anything from one.
+- **The booking link.** It is emailed once, at registration, and then removed from the queue: only a hash of the traveler's token is kept. If a traveler loses the link, "Send a new link" on the booking emails a fresh one, and the old one stops working.
+- **Retries.** A failed job waits 2 minutes, then 10, 30, 2 hours, 6 hours and 12 hours. After six tries it stops, staff get an email, and it shows under Sync with its error and a Retry button.
+- **Not set up yet?** Jobs simply wait, without using up tries, and go out once the keys are in.
+
+**Switching HubSpot on**
+
+1. In HubSpot, Settings, Integrations, Private Apps: create a private app with these scopes: `crm.objects.contacts.read`, `crm.objects.contacts.write`, `crm.objects.deals.read`, `crm.objects.deals.write`, `crm.schemas.deals.read`. Copy its access token.
+2. Put the token in Netlify as `HUBSPOT_ACCESS_TOKEN`, marked secret (and in `.env.local` to try it locally).
+3. In the admin, open Sync and choose the pipeline and a stage for each booking status. Nothing is sent until this is saved.
+4. Optional: create the six deal properties that Sync lists as missing.
+
+**Switching email on**
+
+1. In Resend, add and verify a sending domain, such as `mail.adventure-access.com`. Resend lists the DNS records to add; add them where the domain's DNS is managed.
+2. Create an API key and put it in Netlify as `RESEND_API_KEY`, marked secret.
+3. Set `EMAIL_FROM` in Netlify, for example `Adventure Access <bookings@mail.adventure-access.com>`. Staff notices go to `info@adventure-access.com` unless `STAFF_NOTIFY_EMAIL` says otherwise.
+
+The worker runs every five minutes from `netlify/functions/sync-jobs.mts` and needs `CRON_SECRET`, the same one the hold cleanup uses. "Run the queue now" under Sync does the same thing on demand.
+
+**One caution while the deployed site shares the dev database.** The browser tests and the race test make real bookings in that database for a few seconds. They delete the queue jobs those bookings create, but if the worker runs in that moment, a test booking could reach HubSpot or the staff inbox. Before adding the HubSpot token or the Resend key to Netlify, give the deployed site its own database, or stop running those tests against the shared one.
+
 ## Payments
 
 Money reaches a booking in two ways, and both end in the same database function, so the same rules apply.
@@ -156,7 +185,7 @@ npx supabase db push
 
 `--dry-run` lists what would be applied. Read it before the real push, and check the project ref is the dev project. To add a migration, run `npx supabase migration new <name>` and fill in the file it creates; do not edit one that has been applied.
 
-The dev project is "Bookings" (ref `pvfnlahywytptizpgkwo`). The twelve migrations in this folder are already applied there, and the filenames match the versions recorded in the database, so `db push` only sends new ones.
+The dev project is "Bookings" (ref `pvfnlahywytptizpgkwo`). The thirteen migrations in this folder are already applied there, and the filenames match the versions recorded in the database, so `db push` only sends new ones.
 
 ## Hosting on Netlify
 
@@ -229,11 +258,12 @@ Neither changes any Windows setting, and neither affects Netlify or CI, which ru
 | `src/lib/auth/` | Who counts as staff, and resolving the signed-in staff member |
 | `src/lib/admin/db.ts` | Admin data access (service role, after the role check) |
 | `src/lib/bookings/` | Booking form validation, payment plan, access tokens, and the calls to the booking SQL functions |
+| `src/lib/hubspot/`, `src/lib/email/`, `src/lib/sync/` | The HubSpot client and sync, the email templates and sender, and the queue worker |
 | `src/lib/documents/`, `src/lib/drive/` | Upload checks, file naming, the Drive uploader, waivers and document review |
 | `src/lib/itinerary/`, `src/lib/admin/itinerary.ts` | Itinerary items, the tour template mapping, and the editor's and roster's data access |
 | `src/lib/payments/`, `src/lib/stripe/` | What is due, the card fee, the Checkout Session, reading Stripe events, and the calls to the money SQL functions |
 | `src/pages/api/` | The Stripe webhook and the cron route |
-| `netlify/functions/` | The hourly scheduled function |
+| `netlify/functions/` | The scheduled functions: hold cleanup hourly, the sync worker every five minutes |
 | `src/lib/departures/`, `src/lib/policies/`, `src/lib/trips/` | Form parsing and trip feed logic, with tests |
 | `src/lib/money.ts`, `src/lib/dates.ts` | Integer-cents and calendar-date helpers |
 | `src/lib/schemas/` | Shared Zod building blocks |
