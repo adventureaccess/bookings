@@ -2,7 +2,7 @@
 
 Done when: a test booking appears as a deal with all travelers associated, and a forced HubSpot failure retries and then succeeds.
 
-Stacked on #15 (milestone 6). If #15 is not merged to `main` first, merge this one to `main` instead and it carries milestone 6 with it.
+This PR goes straight to `main` and carries milestones 5 and 6 with it, because #15 is not merged yet. Merging this one alone brings `main` fully up to date; #15 will then show as merged too. Stacked pull requests have twice left work stranded off `main`, so each one now targets `main`.
 
 ## What is here
 
