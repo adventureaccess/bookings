@@ -10,6 +10,8 @@ import {
   type TripSyncSummary,
 } from "../lib/admin/db";
 import { requireWriter, UUID } from "./guards";
+import { documentActions } from "./documents";
+import { itineraryActions } from "./itinerary";
 import { paymentActions } from "./payments";
 import {
   createBooking,
@@ -24,6 +26,7 @@ import {
   type BookingFormValues,
 } from "../lib/bookings/form";
 import { recallBooking, rememberBooking } from "../lib/bookings/session";
+import { getLeadEmail } from "../lib/payments/db";
 import { hashAccessToken, newAccessToken } from "../lib/bookings/token";
 import {
   parseDepartureForm,
@@ -112,6 +115,8 @@ function bookingRefusal(result: Extract<CreateBookingResult, { ok: false }>): st
 
 export const server = {
   ...paymentActions,
+  ...itineraryActions,
+  ...documentActions,
 
   /**
    * The public booking form. No sign-in: anyone who can see the departure may
@@ -144,12 +149,18 @@ export const server = {
       }
 
       // Coming back to change details: reuse the pending booking and its hold.
+      // Only for the same person, matched on email. Two people registering
+      // one after the other on a shared computer each get their own booking.
       const remembered = recallBooking(context.cookies);
-      const existing = remembered
-        ? await getBookingSummary(remembered.reference, hashAccessToken(remembered.token))
-        : null;
-      const resume =
+      const rememberedHash = remembered ? hashAccessToken(remembered.token) : "";
+      const existing = remembered ? await getBookingSummary(remembered.reference, rememberedHash) : null;
+      const samePerson =
         remembered && existing?.status === "pending" && existing.departure_id === departureId
+          ? (await getLeadEmail(remembered.reference, rememberedHash)) ===
+            parsed.data.travelers[0]?.email
+          : false;
+      const resume =
+        remembered && existing && samePerson
           ? { id: existing.booking_id, token: remembered.token }
           : null;
 

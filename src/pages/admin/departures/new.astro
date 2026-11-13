@@ -5,17 +5,19 @@ import Notice from "../../../components/Notice.astro";
 import Admin from "../../../layouts/Admin.astro";
 import { listPolicies, listTrips } from "../../../lib/admin/db";
 import { canWrite } from "../../../lib/auth/staff";
+import { listWaivers } from "../../../lib/documents/db";
 import { scheduleToValues, type DepartureFormValues } from "../../../lib/departures/form";
 
 const result = Astro.getActionResult(actions.saveDeparture);
 if (result?.data?.ok) return Astro.redirect("/admin/departures?done=created");
 
 const canEdit = canWrite(Astro.locals.staff);
-const [trips, policies] = await Promise.all([listTrips(), listPolicies()]);
+const [trips, policies, waivers] = await Promise.all([listTrips(), listPolicies(), listWaivers()]);
 const failed = result?.data && !result.data.ok ? result.data : null;
 
 const blank: DepartureFormValues = {
   trip_id: trips.length === 1 ? (trips[0]?.id ?? "") : "",
+  group_name: "",
   start_date: "",
   end_date: "",
   price: "",
@@ -26,6 +28,9 @@ const blank: DepartureFormValues = {
   status: "open",
   visibility: "public",
   policy_version_id: "",
+  waiver_version_id: "",
+  require_insurance: "yes",
+  require_passport: "yes",
   custom_questions: "",
   ...scheduleToValues([]),
 };
@@ -46,6 +51,7 @@ const blank: DepartureFormValues = {
     errors={failed?.errors ?? {}}
     trips={trips.filter((t) => t.active)}
     policies={policies.filter((p) => p.published_at !== null)}
+    waivers={waivers.filter((w) => w.published_at !== null)}
     canEdit={canEdit}
   />
 </Admin>

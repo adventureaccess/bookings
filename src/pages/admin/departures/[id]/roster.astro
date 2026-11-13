@@ -1,0 +1,145 @@
+---
+import Admin from "../../../../layouts/Admin.astro";
+import { getDeparture, listTrips } from "../../../../lib/admin/db";
+import { listRoster } from "../../../../lib/admin/itinerary";
+import { formatDateRange } from "../../../../lib/dates";
+import { listDocumentsForBookings } from "../../../../lib/documents/db";
+import { progressLabel, requiredKinds, staffProgress } from "../../../../lib/documents/progress";
+import { formatUsd } from "../../../../lib/money";
+
+// Everyone registered on one departure, with what each has paid and owes.
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const id = Astro.params.id ?? "";
+if (!UUID.test(id)) return new Response(null, { status: 404 });
+
+const departure = await getDeparture(id);
+if (!departure) return new Response(null, { status: 404 });
+const [roster, trips] = await Promise.all([listRoster(id), listTrips()]);
+const { documents, signatures } = await listDocumentsForBookings(roster.map((b) => b.id));
+const required = requiredKinds(departure.required_documents);
+const documentsFor = (booking: (typeof roster)[number]) =>
+  staffProgress({
+    travelerIds: booking.travelers.map((t) => t.id),
+    required,
+    waiverVersionId: departure.waiver_version_id,
+    uploads: documents,
+    signatures,
+  });
+const trip = trips.find((t) => t.id === departure.trip_id);
+
+const STATUS_LABEL = {
+  pending: "Registered, not paid",
+  deposit_paid: "Deposit paid",
+  paid_in_full: "Paid in full",
+  canceled: "Canceled",
+  refunded: "Refunded",
+} as const;
+
+const owed = (b: (typeof roster)[number]) => Math.max(b.total_cents - b.discount_cents - b.paid_cents, 0);
+const active = roster.filter((b) => b.status !== "canceled" && b.status !== "refunded");
+const confirmed = active.filter((b) => b.status !== "pending");
+const sum = (list: typeof roster, pick: (b: (typeof roster)[number]) => number) =>
+  list.reduce((total, b) => total + pick(b), 0);
+---
+
+<Admin title="Roster">
+  <p class="-mt-4 mb-8 text-warm-mid">
+    {trip?.title ?? "Departure"}
+    {departure.group_name && `, ${departure.group_name}`}, {formatDateRange(departure.start_date, departure.end_date)}
+    {" · "}
+    <a class="underline underline-offset-4" href={`/admin/departures/${id}`}>Back to the departure</a>
+  </p>
+
+  <dl class="grid max-w-3xl gap-4 sm:grid-cols-4">
+    <div class="border border-cream-dark bg-white p-4">
+      <dt class="text-xs uppercase tracking-wider text-warm-mid">Confirmed travelers</dt>
+      <dd class="mt-1 font-sans text-2xl font-light text-dark" data-testid="roster-confirmed">
+        {sum(confirmed, (b) => b.traveler_count)} of {departure.max_travelers}
+      </dd>
+    </div>
+    <div class="border border-cream-dark bg-white p-4">
+      <dt class="text-xs uppercase tracking-wider text-warm-mid">Registered, not paid</dt>
+      <dd class="mt-1 font-sans text-2xl font-light text-dark">
+        {sum(active.filter((b) => b.status === "pending"), (b) => b.traveler_count)}
+      </dd>
+    </div>
+    <div class="border border-cream-dark bg-white p-4">
+      <dt class="text-xs uppercase tracking-wider text-warm-mid">Received</dt>
+      <dd class="mt-1 font-sans text-2xl font-light text-dark">{formatUsd(sum(active, (b) => b.paid_cents))}</dd>
+    </div>
+    <div class="border border-cream-dark bg-white p-4">
+      <dt class="text-xs uppercase tracking-wider text-warm-mid">Still owed</dt>
+      <dd class="mt-1 font-sans text-2xl font-light text-dark">{formatUsd(sum(active, owed))}</dd>
+    </div>
+  </dl>
+
+  <div class="mt-10 overflow-x-auto">
+    <table class="w-full min-w-[52rem] text-left text-sm">
+      <thead class="border-b border-warm-light text-xs uppercase tracking-wider text-warm-mid">
+        <tr>
+          <th scope="col" class="py-2 pr-4 font-medium">Traveler</th>
+          <th scope="col" class="py-2 pr-4 font-medium">Booking</th>
+          <th scope="col" class="py-2 pr-4 font-medium">Status</th>
+          <th scope="col" class="py-2 pr-4 font-medium">Paid</th>
+          <th scope="col" class="py-2 pr-4 font-medium">Owes</th>
+          <th scope="col" class="py-2 font-medium">Documents</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-cream-dark">
+        {
+          roster.map((booking) => {
+            const travelers = [...booking.travelers].sort((a, b) => Number(b.is_lead) - Number(a.is_lead));
+            const dimmed = booking.status === "canceled" || booking.status === "refunded";
+            return (
+              <tr class:list={[dimmed && "text-warm-mid"]} data-booking={booking.reference}>
+                <td class="py-3 pr-4">
+                  {travelers.map((traveler) => (
+                    <span class="block">
+                      <span class:list={[!dimmed && "text-dark"]}>
+                        {traveler.first_name} {traveler.last_name}
+                      </span>
+                      {traveler.email && <span class="block text-xs text-warm-mid">{traveler.email}</span>}
+                    </span>
+                  ))}
+                </td>
+                <td class="py-3 pr-4">
+                  <a class="underline decoration-orange underline-offset-4" href={`/admin/bookings/${booking.id}`}>
+                    {booking.reference}
+                  </a>
+                </td>
+                <td class="py-3 pr-4">
+                  {STATUS_LABEL[booking.status]}
+                  {booking.needs_attention && <span class="block text-xs font-medium text-orange">Needs a look</span>}
+                </td>
+                <td class="py-3 pr-4">{formatUsd(booking.paid_cents)}</td>
+                <td class="py-3 pr-4">{dimmed ? "" : formatUsd(owed(booking))}</td>
+                <td class="py-3" data-testid="roster-documents">
+                  {dimmed ? (
+                    ""
+                  ) : (
+                    <a class="underline decoration-orange underline-offset-4" href={`/admin/bookings/${booking.id}#documents`}>
+                      {progressLabel(documentsFor(booking))}
+                    </a>
+                  )}
+                </td>
+              </tr>
+            );
+          })
+        }
+        {
+          roster.length === 0 && (
+            <tr>
+              <td colspan="6" class="py-6 text-warm-mid">
+                Nobody has registered yet. Send the group the booking link from the departure page.
+              </td>
+            </tr>
+          )
+        }
+      </tbody>
+    </table>
+  </div>
+  <p class="mt-4 text-xs text-warm-mid">
+    Each row is one person's own registration. Documents counts each file and the waiver for
+    every traveler on it; open the booking to review them.
+  </p>
+</Admin>

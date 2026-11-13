@@ -7,6 +7,7 @@ const EXPECTED_TABLES = [
   "booking_adjustments",
   "bookings",
   "departures",
+  "itinerary_items",
   "payments",
   "policy_acceptances",
   "policy_versions",
@@ -15,8 +16,11 @@ const EXPECTED_TABLES = [
   "settings",
   "staff",
   "sync_jobs",
+  "traveler_documents",
   "travelers",
   "trips",
+  "waiver_acceptances",
+  "waiver_versions",
   "webhook_events",
 ];
 

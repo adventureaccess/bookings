@@ -47,6 +47,7 @@ const STATUS_LABEL = { open: "Open", full: "Full", closed: "Closed", canceled: "
               <td class="py-3 pr-4">
                 <a class="text-dark underline decoration-orange underline-offset-4" href={`/admin/departures/${d.id}`}>
                   {d.trips?.title ?? "Unknown trip"}
+                  {d.group_name && <span class="text-warm-mid">, {d.group_name}</span>}
                 </a>
               </td>
               <td class="py-3 pr-4 whitespace-nowrap">{formatDateRange(d.start_date, d.end_date)}</td>

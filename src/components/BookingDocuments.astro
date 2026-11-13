@@ -1,0 +1,157 @@
+---
+import type { BookingDocuments } from "../lib/documents/db";
+import { KIND_LABEL, MAX_UPLOAD_BYTES } from "../lib/documents/files";
+import { formatDate } from "../lib/dates";
+
+/**
+ * A traveler's documents on their own booking: for each person on it, what
+ * is still needed, an upload for each file and the waiver to sign. It shows
+ * where each item stands, never the file itself.
+ */
+interface Props {
+  docs: BookingDocuments;
+  token: string;
+  /** Where the forms post: the booking page itself. */
+  path: string;
+  /** A message from the last attempt, and the traveler it was about. */
+  problem?: { message: string; travelerId?: string } | null;
+}
+
+const { docs, token, path, problem } = Astro.props;
+const post = (action: string) => `${path}?${new URLSearchParams({ _action: action, t: token })}#documents`;
+const several = docs.travelers.length > 1;
+const megabytes = Math.floor(MAX_UPLOAD_BYTES / (1024 * 1024));
+const day = (timestamp: string) => formatDate(timestamp.slice(0, 10));
+const input = "w-full border border-warm-light bg-white px-3 py-2 text-sm text-charcoal";
+const button =
+  "cursor-pointer bg-dark px-5 py-2 text-sm font-medium uppercase tracking-[0.15em] text-white transition-colors hover:bg-orange";
+---
+
+<section id="documents" class="scroll-mt-8">
+  <h2 class="text-2xl">Documents</h2>
+  <p class="mt-2 text-sm text-warm-mid">
+    {several
+      ? "We need these for each person on this booking before the trip."
+      : "We need these from you before the trip."}
+    {docs.required.length > 0 &&
+      ` Files can be a PDF, JPG or PNG of up to ${megabytes} MB. They go straight to our private files; this page only shows that we have them.`}
+  </p>
+
+  <div class="mt-5 space-y-8">
+    {
+      docs.travelers.map((traveler) => (
+        <div data-testid="traveler-documents" data-traveler={traveler.first_name}>
+          {several && (
+            <h3 class="text-xl">
+              {traveler.first_name} {traveler.last_name}
+            </h3>
+          )}
+          {problem && problem.travelerId === traveler.id && (
+            <p role="alert" class="mt-2 border-l-2 border-orange bg-cream-dark px-4 py-3 text-sm text-charcoal">
+              {problem.message}
+            </p>
+          )}
+
+          <ul class="mt-3 divide-y divide-cream-dark border-y border-cream-dark">
+            {docs.required.map((kind) => {
+              const state = traveler.documents[kind];
+              const needed = !state || state.status === "rejected";
+              return (
+                <li class="py-4" data-document={kind}>
+                  <div class="flex flex-wrap items-baseline justify-between gap-x-4">
+                    <span class="text-sm font-medium text-dark">{KIND_LABEL[kind]}</span>
+                    <span class="text-sm" data-testid={`status-${kind}`}>
+                      {!state && <span class="text-orange">Needed</span>}
+                      {state?.status === "submitted" && `Received ${day(state.uploaded_at)}. We are checking it.`}
+                      {state?.status === "accepted" && "Accepted"}
+                      {state?.status === "rejected" && <span class="text-orange">Please send it again</span>}
+                    </span>
+                  </div>
+                  {state?.status === "rejected" && state.note && (
+                    <p class="mt-1 text-sm text-charcoal">Our note: {state.note}</p>
+                  )}
+                  {needed ? (
+                    <form method="POST" action={post("uploadDocument")} enctype="multipart/form-data" class="mt-3 flex flex-wrap items-end gap-3">
+                      <input type="hidden" name="reference" value={docs.reference} />
+                      <input type="hidden" name="token" value={token} />
+                      <input type="hidden" name="traveler_id" value={traveler.id} />
+                      <input type="hidden" name="kind" value={kind} />
+                      <label class="min-w-0 flex-1 basis-64 text-xs text-warm-mid">
+                        Choose the file
+                        <input type="file" name="file" accept="application/pdf,image/jpeg,image/png" required class={`${input} mt-1`} />
+                      </label>
+                      <button type="submit" class={button}>Upload</button>
+                    </form>
+                  ) : (
+                    state?.status === "submitted" && (
+                      <details class="mt-2">
+                        <summary class="cursor-pointer text-xs text-warm-mid underline underline-offset-4">
+                          Send a different file
+                        </summary>
+                        <form method="POST" action={post("uploadDocument")} enctype="multipart/form-data" class="mt-3 flex flex-wrap items-end gap-3">
+                          <input type="hidden" name="reference" value={docs.reference} />
+                          <input type="hidden" name="token" value={token} />
+                          <input type="hidden" name="traveler_id" value={traveler.id} />
+                          <input type="hidden" name="kind" value={kind} />
+                          <label class="min-w-0 flex-1 basis-64 text-xs text-warm-mid">
+                            Choose the file
+                            <input type="file" name="file" accept="application/pdf,image/jpeg,image/png" required class={`${input} mt-1`} />
+                          </label>
+                          <button type="submit" class={button}>Upload</button>
+                        </form>
+                      </details>
+                    )
+                  )}
+                </li>
+              );
+            })}
+
+            {docs.waiver && (
+              <li class="py-4" data-document="waiver">
+                <div class="flex flex-wrap items-baseline justify-between gap-x-4">
+                  <span class="text-sm font-medium text-dark">{docs.waiver.title}</span>
+                  <span class="text-sm" data-testid="status-waiver">
+                    {traveler.waiver_signed_at ? (
+                      `Signed ${day(traveler.waiver_signed_at)}`
+                    ) : (
+                      <span class="text-orange">Needs a signature</span>
+                    )}
+                  </span>
+                </div>
+                <p class="mt-1 text-sm">
+                  <a class="text-dark underline decoration-orange underline-offset-4" href={`/waiver/${docs.waiver.id}`} target="_blank" rel="noopener">
+                    Read the form (PDF)
+                  </a>
+                </p>
+                {!traveler.waiver_signed_at && (
+                  <form method="POST" action={post("signWaiver")} class="mt-3 space-y-3">
+                    <input type="hidden" name="reference" value={docs.reference} />
+                    <input type="hidden" name="token" value={token} />
+                    <input type="hidden" name="traveler_id" value={traveler.id} />
+                    <input type="hidden" name="waiver_version_id" value={docs.waiver.id} />
+                    <label class="flex items-start gap-3 text-sm text-charcoal">
+                      <input type="checkbox" name="agree" value="yes" required class="mt-1 size-4 accent-orange" />
+                      <span>
+                        I have read the {docs.waiver.title} and agree to it
+                        {several && !traveler.is_lead
+                          ? `, on behalf of ${traveler.first_name} ${traveler.last_name}, for whom I am responsible.`
+                          : "."}
+                      </span>
+                    </label>
+                    <div class="flex flex-wrap items-end gap-3">
+                      <label class="min-w-0 flex-1 basis-64 text-xs text-warm-mid">
+                        Type your full name to sign
+                        <input type="text" name="signed_name" maxlength="160" autocomplete="name" required class={`${input} mt-1`} />
+                      </label>
+                      <button type="submit" class={button}>Sign</button>
+                    </div>
+                  </form>
+                )}
+              </li>
+            )}
+          </ul>
+        </div>
+      ))
+    }
+  </div>
+</section>

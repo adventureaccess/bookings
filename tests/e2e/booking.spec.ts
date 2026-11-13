@@ -1,7 +1,10 @@
+import { existsSync, rmSync } from "node:fs";
+import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import {
   bookingState,
   createTestDeparture,
+  documentState,
   removeTestDeparture,
   type TestDeparture,
 } from "./fixtures";
@@ -41,7 +44,7 @@ async function fillLead(page: Page) {
 
 test("a party of two books and their seats are held", async ({ page }) => {
   await open(page, `${departure.path}&travelers=2`);
-  await expect(page.locator("main h1")).toContainText("Ladakh");
+  await expect(page.locator("main h1")).toHaveText(departure.title);
 
   // The server worked out the money: 2 x $4,950.
   await expect(page.getByTestId("plan-total")).toHaveText("$9,900");
@@ -52,7 +55,7 @@ test("a party of two books and their seats are held", async ({ page }) => {
   await page.locator("#t2_first_name").fill("Pema");
   await page.locator("#t2_last_name").fill("Norbu");
   await page.getByRole("checkbox").check();
-  await page.getByRole("button", { name: "Hold 2 seats" }).click();
+  await page.getByRole("button", { name: "Register 2 travelers" }).click();
 
   await expect(page).toHaveURL(/\/booking\/AA-[2-9A-HJ-NP-Z]{4}\?t=/);
   await expect(page.getByTestId("booking-heading")).toHaveText("Your seats are held.");
@@ -89,7 +92,7 @@ test("mistakes are explained per field, typed values stay, and nothing is held",
   await open(page, departure.path);
   await page.getByLabel("First name").fill("Tenzin");
   await page.getByLabel("Email", { exact: true }).fill("not-an-email");
-  await page.getByRole("button", { name: "Hold my seat" }).click();
+  await page.getByRole("button", { name: "Register", exact: true }).click();
 
   await expect(page.getByText("Some fields need attention. Nothing has been held yet.")).toBeVisible();
   await expect(page.getByText("Enter a last name.")).toBeVisible();
@@ -110,7 +113,7 @@ test("going back and submitting again reuses the booking and its hold", async ({
   await page.locator("#t2_first_name").fill("Pema");
   await page.locator("#t2_last_name").fill("Norbu");
   await page.getByRole("checkbox").check();
-  await page.getByRole("button", { name: "Hold 2 seats" }).click();
+  await page.getByRole("button", { name: "Register 2 travelers" }).click();
   await expect(page.getByTestId("booking-heading")).toBeVisible();
   const reference = await page.getByTestId("booking-reference").textContent();
 
@@ -118,7 +121,7 @@ test("going back and submitting again reuses the booking and its hold", async ({
   await open(page, departure.path);
   await fillLead(page);
   await page.getByRole("checkbox").check();
-  await page.getByRole("button", { name: "Hold my seat" }).click();
+  await page.getByRole("button", { name: "Register", exact: true }).click();
 
   await expect(page.getByTestId("booking-heading")).toHaveText("Your seat is held.");
   await expect(page.getByTestId("booking-reference")).toHaveText(reference ?? "");
@@ -128,6 +131,116 @@ test("going back and submitting again reuses the booking and its hold", async ({
   expect(state.holds).toHaveLength(1);
   expect(state.holds[0]?.seats).toBe(1);
   expect(state.travelers).toHaveLength(1);
+});
+
+test("two people registering on one computer each get their own booking", async ({ page }) => {
+  await open(page, departure.path);
+  await fillLead(page);
+  await page.getByRole("checkbox").check();
+  await page.getByRole("button", { name: "Register", exact: true }).click();
+  await expect(page.getByTestId("booking-heading")).toBeVisible();
+  const first = await page.getByTestId("booking-reference").textContent();
+
+  // Same browser, a different person.
+  await open(page, departure.path);
+  await page.getByLabel("First name").fill("Pema");
+  await page.getByLabel("Last name").fill("Lhamo");
+  await page.getByLabel("Email", { exact: true }).fill("pema.lhamo@example.com");
+  await page.getByLabel("Phone").fill("+1 555 010 0199");
+  await page.getByRole("checkbox").check();
+  await page.getByRole("button", { name: "Register", exact: true }).click();
+
+  await expect(page.getByTestId("booking-heading")).toBeVisible();
+  await expect(page.getByTestId("booking-reference")).not.toHaveText(first ?? "");
+
+  const state = await bookingState(departure.id);
+  expect(state.bookings).toHaveLength(2);
+  expect(state.holds).toHaveLength(2);
+  expect(state.travelers.map((t) => t.first_name).sort()).toEqual(["Pema", "Tenzin"]);
+});
+
+test("the group sees its own itinerary above the registration form", async ({ page }) => {
+  await open(page, departure.path);
+  await expect(page.getByRole("heading", { name: "Your itinerary" })).toBeVisible();
+
+  const days = page.getByTestId("itinerary-day");
+  await expect(days).toHaveCount(2);
+  await expect(days.nth(0)).toContainText("Days 1–2");
+  await expect(days.nth(0)).toContainText("Test valley arrival");
+  await expect(days.nth(0).getByRole("listitem")).toHaveCount(2);
+  await expect(days.nth(1)).toContainText("Test pass crossing");
+  await expect(page.getByTestId("itinerary-highlight")).toContainText("Test palace visit");
+
+  // The button at the top leads down to the form.
+  await page.getByRole("link", { name: "Register for this trip" }).click();
+  await expect(page).toHaveURL(/#register$/);
+  await expect(page.getByRole("heading", { name: "Register", exact: true })).toBeInViewport();
+});
+
+test("a traveler hands in a passport copy and signs the waiver on their booking page", async ({ page }) => {
+  await open(page, departure.path);
+  await fillLead(page);
+  await page.getByRole("checkbox").check();
+  await page.getByRole("button", { name: "Register", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Documents" })).toBeVisible();
+
+  const passport = page.locator('[data-document="passport"]');
+  await expect(passport.getByTestId("status-passport")).toHaveText("Needed");
+
+  // Something that is not a PDF or an image, whatever it is called.
+  await passport.locator('input[type="file"]').setInputFiles({
+    name: "passport.pdf",
+    mimeType: "application/pdf",
+    buffer: Buffer.from("MZ this is not a pdf"),
+  });
+  await passport.getByRole("button", { name: "Upload" }).click();
+  await expect(page.getByText("Send a PDF, JPG or PNG. Other kinds of file are not accepted.")).toBeVisible();
+  expect((await documentState(departure.id)).uploads).toHaveLength(0);
+
+  // A real PDF.
+  await page
+    .locator('[data-document="passport"] input[type="file"]')
+    .setInputFiles({
+      name: "my scan.pdf",
+      mimeType: "application/pdf",
+      buffer: Buffer.from("%PDF-1.4\n% test file, not a real passport\n%%EOF\n"),
+    });
+  await page.locator('[data-document="passport"]').getByRole("button", { name: "Upload" }).click();
+  await expect(page.getByText("We have your file.")).toBeVisible();
+  await expect(page.getByTestId("status-passport")).toContainText("Received");
+  await expect(page.getByTestId("status-insurance")).toHaveText("Needed");
+
+  const state = await documentState(departure.id);
+  expect(state.uploads).toHaveLength(1);
+  expect(state.uploads[0]).toMatchObject({ kind: "passport", status: "submitted" });
+  // Named by booking, traveler and kind, never by what the traveler called it.
+  expect(state.uploads[0]?.file_name).toMatch(/^AA-[2-9A-HJ-NP-Z]{4}_Norbu-Tenzin_passport_\d{4}-\d{2}-\d{2}\.pdf$/);
+  // The page never shows the file or where it is kept.
+  await expect(page.locator("main")).not.toContainText(state.uploads[0]?.file_name ?? "x");
+
+  // On a developer machine the file lands in the local stand-in folder.
+  const local = join(process.cwd(), ".local-documents", state.uploads[0]?.file_name ?? "");
+  expect(state.uploads[0]?.drive_file_id).toBe(`local:${state.uploads[0]?.file_name}`);
+  expect(existsSync(local)).toBe(true);
+  rmSync(local, { force: true });
+
+  test.skip(!departure.hasWaiver, "no published waiver in the dev project");
+  const waiver = page.locator('[data-document="waiver"]');
+  await expect(waiver.getByTestId("status-waiver")).toHaveText("Needs a signature");
+  await expect(waiver.getByRole("link", { name: "Read the form (PDF)" })).toHaveAttribute("href", /^\/waiver\//);
+
+  await waiver.getByLabel("Type your full name to sign").fill("Tenzin");
+  await waiver.getByRole("checkbox").check();
+  await waiver.getByRole("button", { name: "Sign" }).click();
+  await expect(page.getByText("Type your full name, first and last, to sign.")).toBeVisible();
+
+  const again = page.locator('[data-document="waiver"]');
+  await again.getByLabel("Type your full name to sign").fill("Tenzin Norbu");
+  await again.getByRole("checkbox").check();
+  await again.getByRole("button", { name: "Sign" }).click();
+  await expect(page.getByText("Your signature is recorded.")).toBeVisible();
+  await expect(page.getByTestId("status-waiver")).toContainText("Signed");
+  expect((await documentState(departure.id)).signatures).toEqual([{ signed_name: "Tenzin Norbu" }]);
 });
 
 test("the terms can be read before accepting", async ({ page }) => {
@@ -155,10 +268,10 @@ test("a full departure cannot be booked, and a second visitor is told so", async
   await pageTwo.getByRole("checkbox").check();
 
   // ...then the first one takes it.
-  await pageOne.getByRole("button", { name: "Hold my seat" }).click();
+  await pageOne.getByRole("button", { name: "Register", exact: true }).click();
   await expect(pageOne.getByTestId("booking-heading")).toHaveText("Your seat is held.");
 
-  await pageTwo.getByRole("button", { name: "Hold my seat" }).click();
+  await pageTwo.getByRole("button", { name: "Register", exact: true }).click();
   await expect(pageTwo.getByText("This departure just filled up. No seats are left.")).toBeVisible();
   await expect(pageTwo.getByTestId("not-bookable")).toContainText("This departure is full.");
 

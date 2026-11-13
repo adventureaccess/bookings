@@ -1,14 +1,20 @@
 import { z } from "astro/zod";
+import { itineraryItemSchema, MAX_ITEMS, type ItineraryItem } from "../itinerary/items";
 
 /**
  * The trip feed published by the website, and how it maps onto the trips
- * table. The feed carries only what this app shows: slug, title, destination
- * and hero image. Departures, prices and capacity live only here.
+ * table. The feed carries only what this app shows: slug, title, destination,
+ * hero image and, optionally, the tour's itinerary as a template to copy onto
+ * a departure. Departures, prices and capacity live only here.
  *
  * Expected shape, at the URL in TRIPS_FEED_URL:
  *   { "trips": [ { "slug": "ladakh-multisport", "title": "Ladakh Multisport",
  *                  "destination": "ladakh",
- *                  "heroImage": "https://adventure-access.com/images/….jpg" } ] }
+ *                  "heroImage": "https://adventure-access.com/images/….jpg",
+ *                  "itinerary": [ { "kind": "day", "day_label": "Days 1–2",
+ *                                   "title": "…", "body_md": "…",
+ *                                   "image_url": "https://…" } ] } ] }
+ * "itinerary" may be left out; a trip's stored template is then left alone.
  */
 
 const feedTrip = z.object({
@@ -24,6 +30,7 @@ const feedTrip = z.object({
     .max(500)
     .regex(/^https:\/\//, "must be an absolute https URL")
     .nullish(),
+  itinerary: z.array(itineraryItemSchema).max(MAX_ITEMS).optional(),
 });
 
 export const tripFeedSchema = z.object({
@@ -38,6 +45,8 @@ export interface ExistingTrip {
   destination: string;
   hero_image_url: string | null;
   active: boolean;
+  /** The stored template itinerary, if it was read. */
+  itinerary?: unknown;
 }
 
 export interface TripRow {
@@ -46,6 +55,8 @@ export interface TripRow {
   destination: string;
   hero_image_url: string | null;
   active: boolean;
+  /** Present only when the feed carries an itinerary for this trip. */
+  itinerary?: ItineraryItem[];
 }
 
 export interface TripSyncPlan {
@@ -82,6 +93,7 @@ export function planTripSync(existing: ExistingTrip[], feed: FeedTrip[]): TripSy
       destination: trip.destination,
       hero_image_url: trip.heroImage ?? null,
       active: true,
+      ...(trip.itinerary ? { itinerary: trip.itinerary } : {}),
     };
     const current = bySlug.get(trip.slug);
     if (!current) {
@@ -91,7 +103,9 @@ export function planTripSync(existing: ExistingTrip[], feed: FeedTrip[]): TripSy
       current.title !== row.title ||
       current.destination !== row.destination ||
       current.hero_image_url !== row.hero_image_url ||
-      !current.active
+      !current.active ||
+      (row.itinerary !== undefined &&
+        JSON.stringify(row.itinerary) !== JSON.stringify(current.itinerary ?? []))
     ) {
       plan.updated += 1;
       plan.upserts.push(row);

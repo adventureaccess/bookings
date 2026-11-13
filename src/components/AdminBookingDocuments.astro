@@ -1,0 +1,157 @@
+---
+import { actions } from "astro:actions";
+import { formatDate } from "../lib/dates";
+import type { StaffDocument, StaffSignature } from "../lib/documents/db";
+import { KIND_LABEL, type DocumentKind } from "../lib/documents/files";
+import { latestUpload } from "../lib/documents/progress";
+import { driveFileUrl } from "../lib/drive/client";
+
+/**
+ * Staff view of one booking's documents: for each traveler, the newest file
+ * of each kind with a link to it in the Shared Drive, accept and reject, and
+ * who signed the waiver. The file itself is only ever opened in Drive.
+ */
+interface Props {
+  travelers: { id: string; first_name: string; last_name: string }[];
+  required: DocumentKind[];
+  waiverVersionId: string | null;
+  documents: StaffDocument[];
+  signatures: StaffSignature[];
+  canEdit: boolean;
+}
+
+const { travelers, required, waiverVersionId, documents, signatures, canEdit } = Astro.props;
+const day = (timestamp: string) => formatDate(timestamp.slice(0, 10));
+const STATUS = { submitted: "To review", accepted: "Accepted", rejected: "Rejected" } as const;
+const small = "cursor-pointer border px-3 py-1 text-xs font-medium uppercase tracking-[0.12em]";
+---
+
+<section class="mt-12" id="documents">
+  <h2 class="text-2xl">Documents</h2>
+  {
+    required.length === 0 && !waiverVersionId ? (
+      <p class="mt-3 text-sm text-warm-mid">This departure asks for no documents.</p>
+    ) : (
+      <div class="mt-3 space-y-6">
+        {travelers.map((traveler) => {
+          const signature = signatures.find(
+            (s) => s.traveler_id === traveler.id && s.waiver_version_id === waiverVersionId,
+          );
+          return (
+            <div data-testid="admin-traveler-documents">
+              <h3 class="text-lg">
+                {traveler.first_name} {traveler.last_name}
+              </h3>
+              <ul class="mt-2 divide-y divide-cream-dark border-y border-cream-dark text-sm">
+                {required.map((kind) => {
+                  const doc = latestUpload(documents, traveler.id, kind);
+                  const earlier = documents.filter(
+                    (d) => d.traveler_id === traveler.id && d.kind === kind && d.id !== doc?.id,
+                  ).length;
+                  const isLocal = doc?.drive_file_id.startsWith("local:");
+                  return (
+                    <li class="py-3" data-document={kind}>
+                      <div class="flex flex-wrap items-baseline justify-between gap-x-4">
+                        <span class="font-medium text-dark">{KIND_LABEL[kind]}</span>
+                        <span data-testid={`admin-status-${kind}`} class:list={[doc?.status === "submitted" && "font-medium text-orange"]}>
+                          {doc ? STATUS[doc.status] : "Not sent yet"}
+                        </span>
+                      </div>
+                      {doc && (
+                        <p class="mt-1 text-xs text-warm-mid">
+                          {doc.file_deleted_at ? (
+                            <>Sent {day(doc.created_at)}. File deleted from the Drive {day(doc.file_deleted_at)}.</>
+                          ) : isLocal ? (
+                            <>Sent {day(doc.created_at)}. Stored on this computer for testing: {doc.file_name}</>
+                          ) : (
+                            <>
+                              Sent {day(doc.created_at)}.{" "}
+                              <a class="text-dark underline decoration-orange underline-offset-4" href={driveFileUrl(doc.drive_file_id)} target="_blank" rel="noopener noreferrer">
+                                Open in Drive
+                              </a>{" "}
+                              ({doc.file_name})
+                            </>
+                          )}
+                          {doc.reviewed_by && doc.reviewed_at && (
+                            <span class="block">
+                              {STATUS[doc.status]} by {doc.reviewed_by}, {day(doc.reviewed_at)}
+                              {doc.note && `: ${doc.note}`}
+                            </span>
+                          )}
+                          {earlier > 0 && (
+                            <span class="block">
+                              {earlier} earlier {earlier === 1 ? "file" : "files"} for this item, replaced by this one.
+                            </span>
+                          )}
+                        </p>
+                      )}
+                      {doc && canEdit && (
+                        <div class="mt-2 flex flex-wrap items-start gap-3">
+                          {doc.status !== "accepted" && (
+                            <form method="POST" action={actions.reviewDocument}>
+                              <input type="hidden" name="document_id" value={doc.id} />
+                              <input type="hidden" name="decision" value="accepted" />
+                              <button type="submit" class={`${small} border-dark text-dark hover:bg-dark hover:text-white`}>
+                                Accept
+                              </button>
+                            </form>
+                          )}
+                          {doc.status !== "rejected" && (
+                            <details>
+                              <summary class="cursor-pointer text-xs underline underline-offset-4">Reject</summary>
+                              <form method="POST" action={actions.reviewDocument} class="mt-2 flex flex-wrap items-end gap-2">
+                                <input type="hidden" name="document_id" value={doc.id} />
+                                <input type="hidden" name="decision" value="rejected" />
+                                <label class="text-xs text-warm-mid">
+                                  What is wrong (the traveler sees this)
+                                  <input type="text" name="note" maxlength="500" required class="mt-1 block w-72 border border-warm-light bg-white px-3 py-1.5 text-sm text-charcoal" />
+                                </label>
+                                <button type="submit" class={`${small} border-orange text-orange hover:bg-orange hover:text-white`}>
+                                  Reject
+                                </button>
+                              </form>
+                            </details>
+                          )}
+                          {!doc.file_deleted_at && !isLocal && (
+                            <details>
+                              <summary class="cursor-pointer text-xs text-warm-mid underline underline-offset-4">
+                                File deleted from Drive
+                              </summary>
+                              <form method="POST" action={actions.markDocumentDeleted} class="mt-2">
+                                <input type="hidden" name="document_id" value={doc.id} />
+                                <p class="mb-2 max-w-xs text-xs text-warm-mid">
+                                  Use this after you have deleted the file in the Shared Drive.
+                                  It records that the file is gone; it does not delete anything.
+                                </p>
+                                <button type="submit" class={`${small} border-warm-light text-charcoal hover:border-dark`}>
+                                  Record as deleted
+                                </button>
+                              </form>
+                            </details>
+                          )}
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
+                {waiverVersionId && (
+                  <li class="py-3" data-document="waiver">
+                    <div class="flex flex-wrap items-baseline justify-between gap-x-4">
+                      <span class="font-medium text-dark">Waiver</span>
+                      <span data-testid="admin-status-waiver">
+                        {signature ? `Signed ${day(signature.accepted_at)}` : "Not signed yet"}
+                      </span>
+                    </div>
+                    {signature && (
+                      <p class="mt-1 text-xs text-warm-mid">Signed as "{signature.signed_name}".</p>
+                    )}
+                  </li>
+                )}
+              </ul>
+            </div>
+          );
+        })}
+      </div>
+    )
+  }
+</section>

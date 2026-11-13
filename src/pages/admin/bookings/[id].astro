@@ -1,10 +1,13 @@
 ---
 import { actions } from "astro:actions";
+import AdminBookingDocuments from "../../../components/AdminBookingDocuments.astro";
 import Notice from "../../../components/Notice.astro";
 import Admin from "../../../layouts/Admin.astro";
 import { getBookingDetail } from "../../../lib/admin/db";
 import { canWrite } from "../../../lib/auth/staff";
 import { formatDate, formatDateRange } from "../../../lib/dates";
+import { listDocumentsForBookings } from "../../../lib/documents/db";
+import { requiredKinds } from "../../../lib/documents/progress";
 import { formatUsd } from "../../../lib/money";
 import { OFFLINE_METHODS } from "../../../lib/payments/db";
 
@@ -18,6 +21,8 @@ const results = [
   { result: Astro.getActionResult(actions.recordOfflinePayment), done: "payment" },
   { result: Astro.getActionResult(actions.voidPayment), done: "voided" },
   { result: Astro.getActionResult(actions.addCredit), done: "credit" },
+  { result: Astro.getActionResult(actions.reviewDocument), done: "document" },
+  { result: Astro.getActionResult(actions.markDocumentDeleted), done: "file-deleted" },
   { result: Astro.getActionResult(actions.markBookingReviewed), done: "reviewed" },
   { result: Astro.getActionResult(actions.cancelBooking), done: "canceled" },
 ];
@@ -37,6 +42,7 @@ const balance = Math.max(booking.total_cents - booking.discount_cents - booking.
 const payments = [...booking.payments].sort((a, b) => a.created_at.localeCompare(b.created_at));
 const credits = [...booking.booking_adjustments].sort((a, b) => a.created_at.localeCompare(b.created_at));
 const travelers = [...booking.travelers].sort((a, b) => Number(b.is_lead) - Number(a.is_lead));
+const { documents, signatures } = await listDocumentsForBookings([booking.id]);
 const today = new Date().toISOString().slice(0, 10);
 const holdMinutes = booking.seat_holds
   ? Math.ceil((Date.parse(booking.seat_holds.expires_at) - Date.now()) / 60_000)
@@ -46,6 +52,8 @@ const FLASH: Record<string, string> = {
   payment: "Payment recorded.",
   voided: "Payment voided.",
   credit: "Credit saved.",
+  document: "Document review saved.",
+  "file-deleted": "Recorded that the file is deleted.",
   reviewed: "Marked as sorted.",
   canceled: "Booking canceled. Its seats are free again.",
 };
@@ -339,6 +347,15 @@ const answerText = (answers: unknown): string => {
       </div>
     )
   }
+
+  <AdminBookingDocuments
+    travelers={travelers}
+    required={requiredKinds(departure?.required_documents)}
+    waiverVersionId={departure?.waiver_version_id ?? null}
+    documents={documents}
+    signatures={signatures}
+    canEdit={canEdit}
+  />
 
   {
     canEdit && booking.status !== "canceled" && booking.status !== "refunded" && (

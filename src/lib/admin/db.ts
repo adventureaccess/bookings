@@ -106,7 +106,7 @@ export async function syncTrips(
   const db = createServiceClient();
   const { data: existing, error: readError } = await db
     .from("trips")
-    .select("slug, title, destination, hero_image_url, active");
+    .select("slug, title, destination, hero_image_url, active, itinerary");
   if (readError) {
     logDbError("syncTrips read", readError);
     return fail("Could not read the current trips.");
@@ -145,7 +145,7 @@ export async function syncTrips(
 // --- Departures ------------------------------------------------------------
 
 const DEPARTURE_COLUMNS =
-  "id, trip_id, start_date, end_date, price_cents, deposit_cents, currency, balance_due_date, min_travelers, max_travelers, status, visibility, private_token, policy_version_id, custom_questions, payment_schedule, updated_at";
+  "id, trip_id, start_date, end_date, price_cents, deposit_cents, currency, balance_due_date, min_travelers, max_travelers, status, visibility, private_token, policy_version_id, custom_questions, payment_schedule, group_name, waiver_version_id, required_documents, updated_at";
 
 export async function listDepartures(): Promise<DepartureWithTrip[]> {
   const { data, error } = await createServiceClient()
@@ -164,6 +164,17 @@ export async function getDeparture(id: string): Promise<Departure | null> {
     .maybeSingle();
   if (error) logDbError("getDeparture", error);
   return (data as Departure | null) ?? null;
+}
+
+/** A departure may only point at a waiver that has been published. */
+async function waiverIsPublished(id: string): Promise<boolean> {
+  const { data } = await createServiceClient()
+    .from("waiver_versions")
+    .select("id")
+    .eq("id", id)
+    .not("published_at", "is", null)
+    .maybeSingle();
+  return Boolean(data);
 }
 
 /** A departure may only point at a policy that has been published. */
@@ -190,6 +201,9 @@ export async function saveDeparture(
 ): Promise<Result<string>> {
   if (input.policy_version_id && !(await policyIsPublished(input.policy_version_id))) {
     return fail("Choose a published policy. Drafts cannot be attached to a departure.");
+  }
+  if (input.waiver_version_id && !(await waiverIsPublished(input.waiver_version_id))) {
+    return fail("Choose a published waiver. Drafts cannot be attached to a departure.");
   }
   const db = createServiceClient();
 
@@ -438,7 +452,8 @@ export async function getBookingDetail(id: string): Promise<BookingDetail | null
       `id, reference, status, traveler_count, total_cents, discount_cents, paid_cents,
        needs_attention, source, created_at,
        departures ( id, start_date, end_date, price_cents, deposit_cents, balance_due_date,
-                    payment_schedule, visibility, trips ( title, slug ) ),
+                    payment_schedule, visibility, required_documents, waiver_version_id,
+                    trips ( title, slug ) ),
        seat_holds ( seats, expires_at ),
        travelers!travelers_booking_id_fkey ( id, first_name, last_name, email, phone, is_lead, answers ),
        payments ( id, kind, method, status, amount_cents, fee_cents, received_on, note, recorded_by,

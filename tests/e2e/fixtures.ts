@@ -38,12 +38,25 @@ export interface TestDeparture {
   slug: string;
   /** The booking page, with the private key. */
   path: string;
+  /** The tour's title, as the booking page shows it. */
+  title: string;
+  /** True when a published waiver exists and is attached. */
+  hasWaiver: boolean;
 }
 
 export async function createTestDeparture(seats: number): Promise<TestDeparture> {
-  const trip = await db().from("trips").select("id, slug").eq("active", true).limit(1).maybeSingle();
+  const trip = await db().from("trips").select("id, slug, title").eq("active", true).order("slug").limit(1).maybeSingle();
   const policy = await db()
     .from("policy_versions")
+    .select("id")
+    .not("published_at", "is", null)
+    .order("version", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  // The newest published waiver, if there is one. Publishing cannot be
+  // undone, so the tests use what exists and never publish their own.
+  const waiver = await db()
+    .from("waiver_versions")
     .select("id")
     .not("published_at", "is", null)
     .order("version", { ascending: false })
@@ -66,6 +79,7 @@ export async function createTestDeparture(seats: number): Promise<TestDeparture>
       visibility: "private",
       private_token: key,
       policy_version_id: policy.data.id,
+      waiver_version_id: waiver.data?.id ?? null,
       custom_questions: [
         { id: "q1", label: "What is your height, for bike sizing?", type: "text", required: false },
       ],
@@ -79,7 +93,25 @@ export async function createTestDeparture(seats: number): Promise<TestDeparture>
 
   const id = created.data.id as string;
   const slug = trip.data.slug as string;
-  return { id, key, slug, path: `/${slug}/${id}?key=${key}` };
+
+  // The group's own itinerary: two days and a highlight.
+  const itinerary = await db().rpc("replace_itinerary", {
+    p_departure_id: id,
+    p_items: [
+      { kind: "day", day_label: "Days 1–2", title: "Test valley arrival", body_md: "Settle in.\n\n- Day 1: Fly in.\n- Day 2: Walk.", image_url: null },
+      { kind: "day", day_label: "Day 3", title: "Test pass crossing", body_md: "A long day on foot.", image_url: null },
+      { kind: "highlight", day_label: "", title: "Test palace visit", body_md: "A palace above the village.", image_url: null },
+    ],
+  });
+  if (itinerary.error) throw new Error(`Could not add a test itinerary (${itinerary.error.code}).`);
+  return {
+    id,
+    key,
+    slug,
+    title: trip.data.title as string,
+    path: `/${slug}/${id}?key=${key}`,
+    hasWaiver: Boolean(waiver.data),
+  };
 }
 
 export async function removeTestDeparture(id: string): Promise<void> {
@@ -112,5 +144,27 @@ export async function bookingState(departureId: string): Promise<BookingState> {
     bookings: (bookings.data ?? []) as BookingState["bookings"],
     holds: (holds.data ?? []) as BookingState["holds"],
     travelers: (travelers.data ?? []) as BookingState["travelers"],
+  };
+}
+
+export interface DocumentState {
+  uploads: { kind: string; status: string; drive_file_id: string; file_name: string }[];
+  signatures: { signed_name: string }[];
+}
+
+/** The uploads and waiver signatures recorded for a test departure's bookings. */
+export async function documentState(departureId: string): Promise<DocumentState> {
+  const bookings = await db().from("bookings").select("id").eq("departure_id", departureId);
+  const ids = (bookings.data ?? []).map((b) => b.id as string);
+  if (ids.length === 0) return { uploads: [], signatures: [] };
+  const uploads = await db()
+    .from("traveler_documents")
+    .select("kind, status, drive_file_id, file_name")
+    .in("booking_id", ids)
+    .order("created_at");
+  const signatures = await db().from("waiver_acceptances").select("signed_name").in("booking_id", ids);
+  return {
+    uploads: (uploads.data ?? []) as DocumentState["uploads"],
+    signatures: (signatures.data ?? []) as DocumentState["signatures"],
   };
 }

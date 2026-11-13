@@ -7,7 +7,7 @@
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const MARKERS = ["DEV_STAFF_EMAIL"];
+const MARKERS = ["DEV_STAFF_EMAIL", "LOCAL_DOCUMENT_STAND_IN", ".local-documents"];
 const ROOTS = ["dist", join(".netlify", "v1"), join(".netlify", "build")];
 
 function* walk(dir) {
