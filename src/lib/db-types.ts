@@ -36,7 +36,7 @@ export interface RosterBooking {
   paid_cents: number;
   needs_attention: boolean;
   created_at: string;
-  travelers: { first_name: string; last_name: string; email: string | null; is_lead: boolean }[];
+  travelers: { id: string; first_name: string; last_name: string; email: string | null; is_lead: boolean }[];
 }
 
 export interface Departure {
@@ -57,6 +57,8 @@ export interface Departure {
   custom_questions: unknown;
   payment_schedule: unknown;
   group_name: string | null;
+  waiver_version_id: string | null;
+  required_documents: unknown;
   updated_at: string;
 }
 
@@ -113,6 +115,8 @@ export interface BookingDetail {
     balance_due_date: string;
     payment_schedule: unknown;
     visibility: DepartureVisibility;
+    required_documents: unknown;
+    waiver_version_id: string | null;
     trips: Pick<Trip, "title" | "slug"> | null;
   } | null;
   seat_holds: { seats: number; expires_at: string } | null;

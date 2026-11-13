@@ -3,6 +3,8 @@ import Admin from "../../../../layouts/Admin.astro";
 import { getDeparture, listTrips } from "../../../../lib/admin/db";
 import { listRoster } from "../../../../lib/admin/itinerary";
 import { formatDateRange } from "../../../../lib/dates";
+import { listDocumentsForBookings } from "../../../../lib/documents/db";
+import { progressLabel, requiredKinds, staffProgress } from "../../../../lib/documents/progress";
 import { formatUsd } from "../../../../lib/money";
 
 // Everyone registered on one departure, with what each has paid and owes.
@@ -13,6 +15,16 @@ if (!UUID.test(id)) return new Response(null, { status: 404 });
 const departure = await getDeparture(id);
 if (!departure) return new Response(null, { status: 404 });
 const [roster, trips] = await Promise.all([listRoster(id), listTrips()]);
+const { documents, signatures } = await listDocumentsForBookings(roster.map((b) => b.id));
+const required = requiredKinds(departure.required_documents);
+const documentsFor = (booking: (typeof roster)[number]) =>
+  staffProgress({
+    travelerIds: booking.travelers.map((t) => t.id),
+    required,
+    waiverVersionId: departure.waiver_version_id,
+    uploads: documents,
+    signatures,
+  });
 const trip = trips.find((t) => t.id === departure.trip_id);
 
 const STATUS_LABEL = {
@@ -101,7 +113,15 @@ const sum = (list: typeof roster, pick: (b: (typeof roster)[number]) => number) 
                 </td>
                 <td class="py-3 pr-4">{formatUsd(booking.paid_cents)}</td>
                 <td class="py-3 pr-4">{dimmed ? "" : formatUsd(owed(booking))}</td>
-                <td class="py-3 text-warm-mid">Not collected yet</td>
+                <td class="py-3" data-testid="roster-documents">
+                  {dimmed ? (
+                    ""
+                  ) : (
+                    <a class="underline decoration-orange underline-offset-4" href={`/admin/bookings/${booking.id}#documents`}>
+                      {progressLabel(documentsFor(booking))}
+                    </a>
+                  )}
+                </td>
               </tr>
             );
           })
@@ -119,6 +139,7 @@ const sum = (list: typeof roster, pick: (b: (typeof roster)[number]) => number) 
     </table>
   </div>
   <p class="mt-4 text-xs text-warm-mid">
-    Each row is one person's own registration. Documents arrive with the next milestone.
+    Each row is one person's own registration. Documents counts each file and the waiver for
+    every traveler on it; open the booking to review them.
   </p>
 </Admin>

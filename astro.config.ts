@@ -15,7 +15,9 @@ export default defineConfig({
   output: "server",
   adapter: netlify(),
   vite: { plugins: [tailwindcss()] },
-  security: { checkOrigin: true },
+  // Forms may carry a document of up to 4 MB (src/lib/documents/files.ts);
+  // the default limit for form posts is 1 MB.
+  security: { checkOrigin: true, actionBodySizeLimit: 6 * 1024 * 1024 },
   env: {
     // Fail the build and server start when a required name is missing.
     validateSecrets: true,
@@ -40,6 +42,10 @@ export default defineConfig({
       // A live Stripe key is refused unless this is true. Leave it off until launch.
       STRIPE_LIVE_MODE: envField.boolean({ ...serverPublic, optional: true, default: false }),
       CRON_SECRET: envField.string({ ...secret, optional: true }),
+      // Milestone 6: the service account that uploads traveler documents, and
+      // the Shared Drive (or a folder in it) they go into.
+      GOOGLE_SERVICE_ACCOUNT_KEY: envField.string({ ...secret, optional: true }),
+      GOOGLE_DRIVE_FOLDER_ID: envField.string({ ...serverPublic, optional: true }),
       // Milestone 5
       HUBSPOT_ACCESS_TOKEN: envField.string({ ...secret, optional: true }),
       RESEND_API_KEY: envField.string({ ...secret, optional: true }),

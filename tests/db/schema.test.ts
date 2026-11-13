@@ -16,8 +16,11 @@ const EXPECTED_TABLES = [
   "settings",
   "staff",
   "sync_jobs",
+  "traveler_documents",
   "travelers",
   "trips",
+  "waiver_acceptances",
+  "waiver_versions",
   "webhook_events",
 ];
 

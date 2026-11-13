@@ -197,7 +197,7 @@ export async function listRoster(departureId: string): Promise<RosterBooking[]> 
     .select(
       `id, reference, status, traveler_count, total_cents, discount_cents, paid_cents,
        needs_attention, created_at,
-       travelers!travelers_booking_id_fkey ( first_name, last_name, email, is_lead )`,
+       travelers!travelers_booking_id_fkey ( id, first_name, last_name, email, is_lead )`,
     )
     .eq("departure_id", departureId)
     .order("created_at");

@@ -2,7 +2,7 @@
 
 Takes a traveler from a trip page to a paid deposit, recorded in Stripe and HubSpot. The full brief is in [CLAUDE.md](CLAUDE.md). This README covers running it.
 
-Status: milestone 5 (group itinerary and roster). Staff build a trip for a group from a tour in the library, edit its itinerary and send the group a private link. Each traveler sees the itinerary there, registers themselves and pays. Staff see a roster per trip. Stripe is in test mode. No documents, HubSpot or email yet.
+Status: milestone 5 (group itinerary and roster). Staff build a trip for a group from a tour in the library, edit its itinerary and send the group a private link. Each traveler sees the itinerary there, registers themselves and pays. Each traveler also hands in their insurance proof and passport copy and signs the waiver there, and staff review them. Staff see a roster per trip. Stripe is in test mode and Google Drive is not connected yet. No HubSpot or email yet.
 
 Built with Astro (server-rendered), hosted on Netlify, with a Supabase Postgres database.
 
@@ -101,6 +101,26 @@ node scripts/import-tours.mjs
 
 The first shows what would change, the second loads one tour, the third loads all of them. It reads `..\adventure-access-site` (set `WEBSITE_REPO` for another place), adds tours that are missing and updates the rest. It never deletes a tour or switches one on or off. Ladakh Multisport is already loaded.
 
+## Documents
+
+Each traveler handles their own, on their own booking page.
+
+- **What is asked for** is set on the departure: proof of travel insurance, a passport copy, and which waiver to sign. A new departure asks for both files.
+- **Uploads** must be a PDF, JPG or PNG of up to 4 MB. The type is decided from the file's contents, not its name. The limit is Netlify's: a request there cannot be much larger.
+- **Where files go.** Straight to one restricted Google Shared Drive, named by booking, traveler and kind (`AA-7K3Q_Norbu-Tenzin_passport_2026-11-12.pdf`). The database keeps only the Drive file ID. Nothing read from a passport is stored. The traveler sees "received", "accepted" or "send it again", never the file.
+- **Review.** Open a booking in the admin: each file has an "Open in Drive" link, Accept, and Reject with a note the traveler sees. The roster shows a count per booking.
+- **The waiver** is a PDF an admin uploads under Waivers. It starts as a draft; publishing locks it for good. Attach a published version to a departure. Each traveler opens the PDF and signs by typing their full name; the name, time, IP and browser are recorded against that exact version. Someone who registered dependents signs once for each.
+- **Clearing out.** The admin overview lists trips that ended more than 30 days ago and still have passport copies. Delete the files in the Shared Drive, then use "File deleted from Drive" on the booking to record it. The app never deletes a file itself.
+
+**Connecting Google Drive (one time)**
+
+1. In Google Drive, create a Shared Drive for traveler documents. Add only staff as members. In its settings, turn off sharing with people outside the company.
+2. In Google Cloud Console, in the same project as the sign-in client, enable the Google Drive API. Under IAM, Service accounts, create a service account, then create a JSON key for it and download the file.
+3. Add the service account's email address to the Shared Drive as a **Contributor**. That is the only place it has access to.
+4. In Netlify, set `GOOGLE_SERVICE_ACCOUNT_KEY` to the whole contents of the JSON key file, marked secret, and `GOOGLE_DRIVE_FOLDER_ID` to the Shared Drive's ID (the last part of its address in the browser). Put the same two in `.env.local` to try it on your machine. Then delete the downloaded key file.
+
+Until those are set, a deployed site tells travelers that uploads are not switched on. On a developer's machine, uploads go to a `.local-documents` folder instead, so the flow can be tried without Drive; that stand-in is stripped from every build and `npm run check:build` fails if it survives.
+
 ## Payments
 
 Money reaches a booking in two ways, and both end in the same database function, so the same rules apply.
@@ -136,7 +156,7 @@ npx supabase db push
 
 `--dry-run` lists what would be applied. Read it before the real push, and check the project ref is the dev project. To add a migration, run `npx supabase migration new <name>` and fill in the file it creates; do not edit one that has been applied.
 
-The dev project is "Bookings" (ref `pvfnlahywytptizpgkwo`). The eleven migrations in this folder are already applied there, and the filenames match the versions recorded in the database, so `db push` only sends new ones.
+The dev project is "Bookings" (ref `pvfnlahywytptizpgkwo`). The twelve migrations in this folder are already applied there, and the filenames match the versions recorded in the database, so `db push` only sends new ones.
 
 ## Hosting on Netlify
 
@@ -177,7 +197,7 @@ To exercise the webhook without the Stripe CLI, `node scripts/fake-stripe-event.
 
 - `npm test` runs the unit tests and the database tests. The database tests apply every migration to an in-process Postgres (PGlite) and check constraints and row-level security, including that **every table has RLS enabled and forced**. A new table without RLS fails CI. No database or Docker is needed.
 - `npm run check:env` fails if any browser-exposed environment variable name appears in the repo.
-- `npm run check:build` runs after the build and fails if the local-only staff shortcut reached the built app.
+- `npm run check:build` runs after the build and fails if the local-only staff shortcut or the local document folder reached the built app.
 - `npm run audit` fails on high or critical advisories.
 
 ## If Windows blocks a file
@@ -209,6 +229,7 @@ Neither changes any Windows setting, and neither affects Netlify or CI, which ru
 | `src/lib/auth/` | Who counts as staff, and resolving the signed-in staff member |
 | `src/lib/admin/db.ts` | Admin data access (service role, after the role check) |
 | `src/lib/bookings/` | Booking form validation, payment plan, access tokens, and the calls to the booking SQL functions |
+| `src/lib/documents/`, `src/lib/drive/` | Upload checks, file naming, the Drive uploader, waivers and document review |
 | `src/lib/itinerary/`, `src/lib/admin/itinerary.ts` | Itinerary items, the tour template mapping, and the editor's and roster's data access |
 | `src/lib/payments/`, `src/lib/stripe/` | What is due, the card fee, the Checkout Session, reading Stripe events, and the calls to the money SQL functions |
 | `src/pages/api/` | The Stripe webhook and the cron route |

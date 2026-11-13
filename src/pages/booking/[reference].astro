@@ -1,9 +1,11 @@
 ---
 import { actions } from "astro:actions";
+import BookingDocuments from "../../components/BookingDocuments.astro";
 import Notice from "../../components/Notice.astro";
 import Public from "../../layouts/Public.astro";
 import { getBookingSummary } from "../../lib/bookings/db";
 import { hashAccessToken, isAccessToken } from "../../lib/bookings/token";
+import { getBookingDocuments } from "../../lib/documents/db";
 import { formatDate, formatDateRange } from "../../lib/dates";
 import { formatUsd } from "../../lib/money";
 import { balanceCents, cardFeeCents, formatFeePercent, payOptions } from "../../lib/payments/due";
@@ -23,8 +25,31 @@ if (!bookingReference.safeParse(reference).success || !isAccessToken(token)) {
 const started = Astro.getActionResult(actions.startPayment);
 if (started?.data?.ok) return Astro.redirect(started.data.url);
 
-const booking = await getBookingSummary(reference, hashAccessToken(token));
+// Documents: an upload or a signature reloads the page clean, so a refresh
+// cannot send the same file twice.
+const uploaded = Astro.getActionResult(actions.uploadDocument);
+const signed = Astro.getActionResult(actions.signWaiver);
+const here = `${Astro.url.pathname}?t=${token}`;
+if (uploaded?.data?.ok) return Astro.redirect(`${here}&doc=received#documents`);
+if (signed?.data?.ok) return Astro.redirect(`${here}&doc=signed#documents`);
+const documentAttempt = uploaded ?? signed;
+const documentProblem: { message: string; travelerId?: string } | null = documentAttempt?.error
+  ? { message: documentAttempt.error.message }
+  : documentAttempt?.data && !documentAttempt.data.ok
+    ? documentAttempt.data
+    : null;
+
+const [booking, documents] = await Promise.all([
+  getBookingSummary(reference, hashAccessToken(token)),
+  getBookingDocuments(reference, hashAccessToken(token)),
+]);
 if (!booking) return Astro.rewrite("/404");
+const showDocuments =
+  documents !== null &&
+  booking.status !== "canceled" &&
+  booking.status !== "refunded" &&
+  (documents.required.length > 0 || documents.waiver !== null);
+const documentNotice = Astro.url.searchParams.get("doc");
 
 const isPending = booking.status === "pending";
 const isClosed = booking.status === "canceled" || booking.status === "refunded";
@@ -85,6 +110,9 @@ const METHOD = {
     }
     {returned === "canceled" && <Notice>No payment was taken. You can pay whenever you are ready.</Notice>}
     {payError && <Notice kind="error">{payError}</Notice>}
+    {documentNotice === "received" && <Notice kind="success">We have your file. We will check it and mark it here.</Notice>}
+    {documentNotice === "signed" && <Notice kind="success">Thank you. Your signature is recorded.</Notice>}
+    {documentProblem && !documentProblem.travelerId && <Notice kind="error">{documentProblem.message}</Notice>}
 
     {
       held && (
@@ -207,6 +235,12 @@ const METHOD = {
             {feeBps > 0 && " To pay by bank transfer with no card fee, write to info@adventure-access.com with your booking reference."}
           </p>
         </section>
+      )
+    }
+
+    {
+      showDocuments && documents && (
+        <BookingDocuments docs={documents} token={token} path={Astro.url.pathname} problem={documentProblem} />
       )
     }
 

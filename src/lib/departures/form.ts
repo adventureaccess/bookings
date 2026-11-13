@@ -61,6 +61,10 @@ export interface DepartureInput {
   status: DepartureStatus;
   visibility: DepartureVisibility;
   policy_version_id: string | null;
+  /** The waiver travelers sign, or null for none. */
+  waiver_version_id: string | null;
+  /** Which files each traveler must upload. */
+  required_documents: ("insurance" | "passport")[];
   custom_questions: CustomQuestion[];
   payment_schedule: ScheduledPayment[];
 }
@@ -78,6 +82,9 @@ const BASE_FIELDS = [
   "status",
   "visibility",
   "policy_version_id",
+  "waiver_version_id",
+  "require_insurance",
+  "require_passport",
   "custom_questions",
 ] as const;
 type BaseField = (typeof BASE_FIELDS)[number];
@@ -240,6 +247,13 @@ export function parseDepartureForm(form: FormData): DepartureFormResult {
   if (values.policy_version_id !== "" && !UUID.test(values.policy_version_id)) {
     errors.policy_version_id = "Choose a policy from the list.";
   }
+  if (values.waiver_version_id !== "" && !UUID.test(values.waiver_version_id)) {
+    errors.waiver_version_id = "Choose a waiver from the list.";
+  }
+  // Checkboxes: present as "yes" when ticked, absent otherwise.
+  const requiredDocuments: ("insurance" | "passport")[] = [];
+  if (values.require_insurance === "yes") requiredDocuments.push("insurance");
+  if (values.require_passport === "yes") requiredDocuments.push("passport");
 
   const questions = parseCustomQuestions(values.custom_questions);
   if (typeof questions === "string") errors.custom_questions = questions;
@@ -268,6 +282,8 @@ export function parseDepartureForm(form: FormData): DepartureFormResult {
       status: status as DepartureStatus,
       visibility: visibility as DepartureVisibility,
       policy_version_id: values.policy_version_id || null,
+      waiver_version_id: values.waiver_version_id || null,
+      required_documents: requiredDocuments,
       custom_questions: questions as CustomQuestion[],
       payment_schedule: schedule as ScheduledPayment[],
     },

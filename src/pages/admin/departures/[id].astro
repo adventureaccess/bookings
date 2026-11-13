@@ -5,6 +5,7 @@ import Notice from "../../../components/Notice.astro";
 import Admin from "../../../layouts/Admin.astro";
 import { getDeparture, listPolicies, listTrips } from "../../../lib/admin/db";
 import { canWrite } from "../../../lib/auth/staff";
+import { listWaivers } from "../../../lib/documents/db";
 import { formatDateRange } from "../../../lib/dates";
 import {
   questionsToText,
@@ -26,12 +27,15 @@ const departure = await getDeparture(id);
 if (!departure) return new Response(null, { status: 404 });
 
 const canEdit = canWrite(Astro.locals.staff);
-const [trips, policies] = await Promise.all([listTrips(), listPolicies()]);
+const [trips, policies, waivers] = await Promise.all([listTrips(), listPolicies(), listWaivers()]);
 const trip = trips.find((t) => t.id === departure.trip_id);
 const failed = saved?.data && !saved.data.ok ? saved.data : null;
 const deleteMessage =
   deleted?.error?.message ?? (deleted?.data && !deleted.data.ok ? deleted.data.message : null);
 
+const requiredDocuments: unknown[] = Array.isArray(departure.required_documents)
+  ? departure.required_documents
+  : [];
 const current: DepartureFormValues = {
   trip_id: departure.trip_id,
   group_name: departure.group_name ?? "",
@@ -45,6 +49,9 @@ const current: DepartureFormValues = {
   status: departure.status,
   visibility: departure.visibility,
   policy_version_id: departure.policy_version_id ?? "",
+  waiver_version_id: departure.waiver_version_id ?? "",
+  require_insurance: requiredDocuments.includes("insurance") ? "yes" : "",
+  require_passport: requiredDocuments.includes("passport") ? "yes" : "",
   custom_questions: questionsToText(departure.custom_questions),
   ...scheduleToValues(departure.payment_schedule),
 };
@@ -88,6 +95,7 @@ const bookingUrl =
     errors={failed?.errors ?? {}}
     trips={trips.filter((t) => t.active || t.id === departure.trip_id)}
     policies={policies.filter((p) => p.published_at !== null)}
+    waivers={waivers.filter((w) => w.published_at !== null)}
     canEdit={canEdit}
   />
 

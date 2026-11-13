@@ -1,7 +1,8 @@
 ---
 import Admin from "../../layouts/Admin.astro";
 import { listDepartures, listMoneyAttention, listPolicies, listTrips } from "../../lib/admin/db";
-import { formatDateRange } from "../../lib/dates";
+import { formatDate, formatDateRange } from "../../lib/dates";
+import { listPassportRetention } from "../../lib/documents/db";
 
 const [trips, departures, policies, attention] = await Promise.all([
   listTrips(),
@@ -9,6 +10,7 @@ const [trips, departures, policies, attention] = await Promise.all([
   listPolicies(),
   listMoneyAttention(),
 ]);
+const retention = await listPassportRetention();
 const today = new Date().toISOString().slice(0, 10);
 const upcoming = departures.filter((d) => d.end_date >= today && d.status !== "canceled");
 const published = policies.filter((p) => p.published_at !== null);
@@ -53,6 +55,29 @@ const cards = [
             <li>
               A Stripe event could not be recorded ({event.type}): {event.error}. Look it up in
               Stripe as <span class="font-mono text-xs">{event.stripe_event_id}</span>.
+            </li>
+          ))}
+        </ul>
+      </section>
+    )
+  }
+
+  {
+    retention.length > 0 && (
+      <section class="mt-10">
+        <h2 class="text-2xl">Passport copies to clear out</h2>
+        <p class="mt-2 max-w-prose text-sm text-warm-mid">
+          These trips ended more than 30 days ago and still have passport copies in the Shared
+          Drive. Delete the files there, then record it on each booking.
+        </p>
+        <ul class="mt-3 list-disc space-y-2 pl-5 text-sm">
+          {retention.map((item) => (
+            <li>
+              <a class="underline decoration-orange underline-offset-4" href={`/admin/departures/${item.departure_id}/roster`}>
+                {item.trip_title}
+              </a>
+              , ended {formatDate(item.end_date)}: {item.passport_files}{" "}
+              {item.passport_files === 1 ? "passport copy" : "passport copies"}.
             </li>
           ))}
         </ul>

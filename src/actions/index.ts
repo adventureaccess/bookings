@@ -10,6 +10,7 @@ import {
   type TripSyncSummary,
 } from "../lib/admin/db";
 import { requireWriter, UUID } from "./guards";
+import { documentActions } from "./documents";
 import { itineraryActions } from "./itinerary";
 import { paymentActions } from "./payments";
 import {
@@ -115,6 +116,7 @@ function bookingRefusal(result: Extract<CreateBookingResult, { ok: false }>): st
 export const server = {
   ...paymentActions,
   ...itineraryActions,
+  ...documentActions,
 
   /**
    * The public booking form. No sign-in: anyone who can see the departure may

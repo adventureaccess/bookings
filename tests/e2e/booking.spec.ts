@@ -1,7 +1,10 @@
+import { existsSync, rmSync } from "node:fs";
+import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import {
   bookingState,
   createTestDeparture,
+  documentState,
   removeTestDeparture,
   type TestDeparture,
 } from "./fixtures";
@@ -41,7 +44,7 @@ async function fillLead(page: Page) {
 
 test("a party of two books and their seats are held", async ({ page }) => {
   await open(page, `${departure.path}&travelers=2`);
-  await expect(page.locator("main h1")).toContainText("Ladakh");
+  await expect(page.locator("main h1")).toHaveText(departure.title);
 
   // The server worked out the money: 2 x $4,950.
   await expect(page.getByTestId("plan-total")).toHaveText("$9,900");
@@ -172,6 +175,72 @@ test("the group sees its own itinerary above the registration form", async ({ pa
   await page.getByRole("link", { name: "Register for this trip" }).click();
   await expect(page).toHaveURL(/#register$/);
   await expect(page.getByRole("heading", { name: "Register", exact: true })).toBeInViewport();
+});
+
+test("a traveler hands in a passport copy and signs the waiver on their booking page", async ({ page }) => {
+  await open(page, departure.path);
+  await fillLead(page);
+  await page.getByRole("checkbox").check();
+  await page.getByRole("button", { name: "Register", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Documents" })).toBeVisible();
+
+  const passport = page.locator('[data-document="passport"]');
+  await expect(passport.getByTestId("status-passport")).toHaveText("Needed");
+
+  // Something that is not a PDF or an image, whatever it is called.
+  await passport.locator('input[type="file"]').setInputFiles({
+    name: "passport.pdf",
+    mimeType: "application/pdf",
+    buffer: Buffer.from("MZ this is not a pdf"),
+  });
+  await passport.getByRole("button", { name: "Upload" }).click();
+  await expect(page.getByText("Send a PDF, JPG or PNG. Other kinds of file are not accepted.")).toBeVisible();
+  expect((await documentState(departure.id)).uploads).toHaveLength(0);
+
+  // A real PDF.
+  await page
+    .locator('[data-document="passport"] input[type="file"]')
+    .setInputFiles({
+      name: "my scan.pdf",
+      mimeType: "application/pdf",
+      buffer: Buffer.from("%PDF-1.4\n% test file, not a real passport\n%%EOF\n"),
+    });
+  await page.locator('[data-document="passport"]').getByRole("button", { name: "Upload" }).click();
+  await expect(page.getByText("We have your file.")).toBeVisible();
+  await expect(page.getByTestId("status-passport")).toContainText("Received");
+  await expect(page.getByTestId("status-insurance")).toHaveText("Needed");
+
+  const state = await documentState(departure.id);
+  expect(state.uploads).toHaveLength(1);
+  expect(state.uploads[0]).toMatchObject({ kind: "passport", status: "submitted" });
+  // Named by booking, traveler and kind, never by what the traveler called it.
+  expect(state.uploads[0]?.file_name).toMatch(/^AA-[2-9A-HJ-NP-Z]{4}_Norbu-Tenzin_passport_\d{4}-\d{2}-\d{2}\.pdf$/);
+  // The page never shows the file or where it is kept.
+  await expect(page.locator("main")).not.toContainText(state.uploads[0]?.file_name ?? "x");
+
+  // On a developer machine the file lands in the local stand-in folder.
+  const local = join(process.cwd(), ".local-documents", state.uploads[0]?.file_name ?? "");
+  expect(state.uploads[0]?.drive_file_id).toBe(`local:${state.uploads[0]?.file_name}`);
+  expect(existsSync(local)).toBe(true);
+  rmSync(local, { force: true });
+
+  test.skip(!departure.hasWaiver, "no published waiver in the dev project");
+  const waiver = page.locator('[data-document="waiver"]');
+  await expect(waiver.getByTestId("status-waiver")).toHaveText("Needs a signature");
+  await expect(waiver.getByRole("link", { name: "Read the form (PDF)" })).toHaveAttribute("href", /^\/waiver\//);
+
+  await waiver.getByLabel("Type your full name to sign").fill("Tenzin");
+  await waiver.getByRole("checkbox").check();
+  await waiver.getByRole("button", { name: "Sign" }).click();
+  await expect(page.getByText("Type your full name, first and last, to sign.")).toBeVisible();
+
+  const again = page.locator('[data-document="waiver"]');
+  await again.getByLabel("Type your full name to sign").fill("Tenzin Norbu");
+  await again.getByRole("checkbox").check();
+  await again.getByRole("button", { name: "Sign" }).click();
+  await expect(page.getByText("Your signature is recorded.")).toBeVisible();
+  await expect(page.getByTestId("status-waiver")).toContainText("Signed");
+  expect((await documentState(departure.id)).signatures).toEqual([{ signed_name: "Tenzin Norbu" }]);
 });
 
 test("the terms can be read before accepting", async ({ page }) => {

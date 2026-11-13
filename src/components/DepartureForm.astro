@@ -7,6 +7,7 @@ import {
   type DepartureFormErrors,
   type DepartureFormValues,
 } from "../lib/departures/form";
+import type { WaiverVersion } from "../lib/documents/db";
 import Field from "./Field.astro";
 
 interface Props {
@@ -15,10 +16,11 @@ interface Props {
   errors: DepartureFormErrors;
   trips: Trip[];
   policies: PolicyVersion[];
+  waivers: WaiverVersion[];
   canEdit: boolean;
 }
 
-const { id, values, errors, trips, policies, canEdit } = Astro.props;
+const { id, values, errors, trips, policies, waivers, canEdit } = Astro.props;
 const input =
   "w-full border border-warm-light bg-white px-3 py-2 text-charcoal disabled:bg-cream-dark disabled:text-warm-mid";
 const STATUS_LABEL = {
@@ -159,6 +161,43 @@ const describe = (name: keyof DepartureFormErrors) =>
         policies.map((policy) => (
           <option value={policy.id} selected={policy.id === values.policy_version_id}>
             Version {policy.version}: {policy.title}
+          </option>
+        ))
+      }
+    </select>
+  </Field>
+
+  <fieldset>
+    <legend class="block text-sm font-medium text-dark">Documents each traveler must hand in</legend>
+    <p class="mt-1 text-xs text-warm-mid">
+      Travelers upload these on their own booking page. The files go to the staff Shared Drive.
+    </p>
+    <div class="mt-3 flex flex-wrap gap-x-8 gap-y-2 text-sm text-charcoal">
+      <label class="flex items-center gap-2">
+        <input type="checkbox" name="require_insurance" value="yes" checked={values.require_insurance === "yes"} disabled={!canEdit} class="size-4 accent-orange" />
+        Proof of travel insurance
+      </label>
+      <label class="flex items-center gap-2">
+        <input type="checkbox" name="require_passport" value="yes" checked={values.require_passport === "yes"} disabled={!canEdit} class="size-4 accent-orange" />
+        Passport copy
+      </label>
+    </div>
+  </fieldset>
+
+  <Field
+    name="waiver_version_id"
+    label="Waiver to sign"
+    help={waivers.length === 0
+      ? "No waiver is published yet. Upload and publish one under Waivers."
+      : "Each traveler signs this version on their booking page."}
+    error={errors.waiver_version_id}
+  >
+    <select id="waiver_version_id" name="waiver_version_id" class={input} disabled={!canEdit} aria-describedby={errors.waiver_version_id ? "waiver_version_id-error" : "waiver_version_id-help"}>
+      <option value="">None</option>
+      {
+        waivers.map((waiver) => (
+          <option value={waiver.id} selected={waiver.id === values.waiver_version_id}>
+            Version {waiver.version}: {waiver.title}
           </option>
         ))
       }

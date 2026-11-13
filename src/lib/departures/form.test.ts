@@ -25,6 +25,9 @@ function form(overrides: Record<string, string> = {}): FormData {
     status: "open",
     visibility: "public",
     policy_version_id: "",
+    waiver_version_id: "",
+    require_insurance: "yes",
+    require_passport: "yes",
     custom_questions: "",
     ...overrides,
   };
@@ -56,6 +59,8 @@ describe("parseDepartureForm", () => {
         status: "open",
         visibility: "public",
         policy_version_id: null,
+        waiver_version_id: null,
+        required_documents: ["insurance", "passport"],
         custom_questions: [],
         payment_schedule: [],
       },
@@ -73,6 +78,21 @@ describe("parseDepartureForm", () => {
     const named = parseDepartureForm(form({ group_name: "  Hulsey family " }));
     expect(named.ok && named.data.group_name).toBe("Hulsey family");
     expect(errorsOf({ group_name: "x".repeat(121) }).group_name).toMatch(/under 120/);
+  });
+
+  it("reads which documents are required from the checkboxes, and the waiver", () => {
+    const none = new FormData();
+    for (const [key, value] of form().entries()) {
+      if (key !== "require_insurance" && key !== "require_passport") none.set(key, value);
+    }
+    const unticked = parseDepartureForm(none);
+    expect(unticked.ok && unticked.data.required_documents).toEqual([]);
+
+    const waiver = "7c9e6679-7425-40de-944b-e07fc1f90ae7";
+    const one = parseDepartureForm(form({ require_insurance: "", waiver_version_id: waiver }));
+    expect(one.ok && one.data.required_documents).toEqual(["passport"]);
+    expect(one.ok && one.data.waiver_version_id).toBe(waiver);
+    expect(errorsOf({ waiver_version_id: "nope" }).waiver_version_id).toBeDefined();
   });
 
   it("keeps a balance due date that was typed in", () => {
